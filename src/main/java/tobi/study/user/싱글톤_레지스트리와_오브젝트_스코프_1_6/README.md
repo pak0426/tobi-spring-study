@@ -115,3 +115,71 @@ private 생성자를 가진 클래스는 다른 생성자가 없다면 상속이
 스프링은 서버환경에서 싱글톤이 만들어져서 서비스 오브젝트 방식으로 사용되는 것은 지지한다. 하지만 자바의 기본적인 싱글톤 패턴의 구현 방식은 여러 가지 단점이 있기 때문에, 스프링은 직접 싱글톤 형태의 오브젝트를 만들고 관리하는 기능을 제공한다.
 
 그것이 바로 **싱글톤 레지스트리**다.
+
+스프링 컨테이너는 싱글톤을 생성하고, 관리하고, 공급하는 싱글톤 관리 컨테이너이기도 하다. 싱글톤 레지스트리의 장점은 스태틱 메서드와 private 생성자를 사용해야 하는 비정상적인 클래스가 아닐 ㅏ평범한 자바 클래스를 싱글톤으로 활용하게 해준다는 점이다. 평범한 자바 클래스라도 IoC 방식의 컨테이너를 사용해서 생성과 관계설정, 사용 등에 대한 제어권을 컨테이너에게 넘기면 손쉽게 싱글톤 방식으로 만들어져 관리되게 할 수 있다. 오브젝트 생성에 관한 모든 권한은 IoC 기능을 제공하는 애플리케이션 컨텍스트에게 있기 때문이다.
+
+가장 중요한 것은 싱글톤 패턴과 달리 스프링이 지지하는 객체지향적인 설계 방식과 원칙, 디자인 패턴 등을 적용하는 데 아무런 제약이 없다는 점이다.
+
+## 1.6.2 싱글톤과 오브젝트의 상태
+
+싱글톤은 멀티스레드 환경이라면 여러 스레드가 동시에 접근해서 사용할 수 있다. 따라서 상태 관리에 주의를 기울여야 한다. 기본적으로 싱글톤이 멀티스레드 환경에서 서비스 형태의 오브젝트로 사용되는 경우에는 상태정보를 내부에 갖고 있지 안은 무상태 방식으로 만들어져야 한다. 다중 사용자의 요청을 한꺼번에 처리하는 스레드들이 동시에 싱글톤 오브젝트의 인스턴스 변수를 수정하는 것은 매우 위험하다. 저장할 공간이 하나뿐이니 서로 값을 덮어쓰고 자신이 저장하지 않은 값을 읽어올 수 있기 때문이다. 따라서 싱글톤은 기본적으로 인스턴스 필드의 값을 변경하고 유지하는 상태유지 방식으로 만들지 않는다.
+
+상태가 없는 방식으로 클래스를 만드는 경우에 각 요청에 대한 정보나, DB나 서버의 리소스로부터 생성한 정보는 어떻게 다뤄야 할까? 이때는 파라미터와 로컬 변수, 리턴 값 등을 이용하면 된다. 메서드 파라미터나, 메서드 안에서 생성되는 로컬 변수는 매번 새로운 값을 저장할 독립적인 공간이 만들어지기 때문에 싱글톤이라고 해도 여러 쓰레드가 변수의 값을 덮어쓸 일은 없다.
+
+UserDao를 수정한 코드를 살펴보자.
+
+```java
+class UserDao {
+    private ConnectionMaker connectionMaker;
+    private Connection c;
+    private User user;
+
+    public void add(User user) throws SQLException, ClassNotFoundException {
+        this.c = connectionMaker.makeNewConnection();
+
+        PreparedStatement ps = c.prepareStatement(
+                "insert into users(id, name, password) values (?, ?, ?)"
+        );
+        ps.setString(1, user.getId());
+        ps.setString(2, user.getName());
+        ps.setString(3, user.getPassword());
+
+        ps.executeUpdate();
+
+        ps.close();
+        c.close();
+    }
+
+    public User get(String id) throws SQLException, ClassNotFoundException {
+        this.c = connectionMaker.makeNewConnection();
+
+        PreparedStatement ps = c.prepareStatement(
+                "select * from users where id = ?"
+        );
+        ps.setString(1, id);
+
+        ResultSet rs = ps.executeQuery();
+        rs.next();
+        this.user = new User();
+        user.setId(rs.getString("id"));
+        user.setName(rs.getString("name"));
+        user.setPassword(rs.getString("password"));
+
+        rs.close();
+        ps.close();
+        c.close();
+
+        return user;
+    }
+}
+```
+
+기존에 만들었던 UserDao와 다른 점은 기존에 로컬 변수로 선언하고 사용했던 Connection과 User를 클래스의 인스턴스 필드로 선언했다는 것이다. 따라서 싱글톤으로 만들어져서 멀티스레드 환경에서 사용하면 위에서 설명한 대로 심각한 문제가 발생한다. 따라서 스프링의 싱글톤 빈으로 사용되는 클래스를 만들 때는 기존의 UserDao 처럼 개별적으로 바뀌는 정보는 로컬 변수로 정의하거나, 파라미터로 주고받으면서 사용하게 해야한다.
+
+그런데 기존의 UserDao에서도 인스턴스 변수로 정의해서 사용한 것이 있다. 바로 ConnectionMaker 인터페이스 타입의 connectionMaker다. 이것은 인스턴스 변수를 사용해도 상관 없다. 왜냐하면 connectionMaker는 읽기전용의 정보이기 때문이다.
+
+## 1.6.3 스프링의 빈 스코프
+
+스프링이 관리하는 오브젝트, 즉 빈이 생성되고, 존재하고, 적용되는 범위에 대해 알아보자. 스프링에서는 이것을 빈의 스코프라고 한다. 스프링 빈의 기본 스코프는 싱글톤이다. 싱글톤 스코프는 스프링 컨테이너가 존재하는 동안 계속 유지된다.
+
+경우에 따라서는 싱글톤 외의 스코프를 가질 수 있다. 대표적으로 프로토타입 스코프가 있다. 프로토타입은 싱글톤과 달리 컨테이너에 빈을 요청할 때마다 매번 새로운 오브젝트를 만들어준다. 그 외에도 웹을 통해 새로운 HTTP 요청이 생길 때마다 생성되는 요청 스코프가 있고, 웹의 세션과 스코프가 유사한 세션 스코프도 있다. 스프링에서 만들어지는 빈의 스코프는 싱글톤 외에도 다양한 스코프를 사용할 수 있다.

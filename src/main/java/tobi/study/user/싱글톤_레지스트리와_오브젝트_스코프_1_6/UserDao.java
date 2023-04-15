@@ -6,25 +6,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 class UserDao {
-    private static UserDao instance;
-
     private ConnectionMaker connectionMaker;
-
-    public UserDao(ConnectionMaker connectionMaker) {
-        this.connectionMaker = connectionMaker;
-    }
-
-    public static synchronized UserDao getInstance() {
-        if (instance == null) instance = new UserDao();
-        return instance;
-    }
-
-    public UserDao() {
-
-    }
+    private Connection c;
+    private User user;
 
     public void add(User user) throws SQLException, ClassNotFoundException {
-        Connection c = connectionMaker.makeNewConnection();
+        this.c = connectionMaker.makeNewConnection();
 
         PreparedStatement ps = c.prepareStatement(
                 "insert into users(id, name, password) values (?, ?, ?)"
@@ -40,7 +27,7 @@ class UserDao {
     }
 
     public User get(String id) throws SQLException, ClassNotFoundException {
-        Connection c = connectionMaker.makeNewConnection();
+        this.c = connectionMaker.makeNewConnection();
 
         PreparedStatement ps = c.prepareStatement(
                 "select * from users where id = ?"
@@ -49,7 +36,7 @@ class UserDao {
 
         ResultSet rs = ps.executeQuery();
         rs.next();
-        User user = new User();
+        this.user = new User();
         user.setId(rs.getString("id"));
         user.setName(rs.getString("name"));
         user.setPassword(rs.getString("password"));
