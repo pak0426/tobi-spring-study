@@ -27,7 +27,7 @@
 인터페이스는 어떤 기능만 하겠다라고 기능만 정의해놓은 것이다. 따라서 구현 방법은 나타나 있지 않다. 그것은 인터페이스를 구현한 클래스들이 할 일이다.
 
 ```java
-public class DConnectionMaker implements ConnectionMaker {
+class DConnectionMaker implements ConnectionMaker {
     @Override
     public Connection makeNewConnection() throws ClassNotFoundException, SQLException {
         // D사의 독자적인 방법으로 Connection을 생성
@@ -120,7 +120,7 @@ public UserDao(ConnectionMaker connectionMaker) {
 DConnectionMaker가 사라진 이유는 DconnectionMaker를 생성하는 코드는 UserDao와 특정 ConnectionMaker 구현 클래스의 오브젝트 간 관계를 맺는 책임을 담당하는 코드였는데, 그것을 UserDao의 클라이언트에게 넘겨버렸기 때문이다. 이제 클라이언트로서 새로운 책임을 맞게된 UserDaoTest는 아래와 같이 수정한다.
 
 ```java
-public class UserDaoTest {
+class UserDaoTest {
     public static void main(String[] args) throws SQLException, ClassNotFoundException {
         ConnectionMaker connectionMaker = new DConnectionMaker();
         UserDao dao = new UserDao(connectionMaker);
@@ -146,7 +146,7 @@ UserDaoTest는 UserDao와 ConnectionMaker 구현 클래스와의 런타임 의�
 만약에 다른 ConnectionMaker의 구현 클래스가 필요하다면 아래와 같이 만들어주면 된다.
 
 ```java
-public class UserDaoTest {
+class UserDaoTest {
     public static void main(String[] args) throws SQLException, ClassNotFoundException {
         ConnectionMaker connectionMaker = new NConnectionMaker();
         UserDao dao = new UserDao(connectionMaker);

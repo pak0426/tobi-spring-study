@@ -1,10 +1,11 @@
-package tobi.study.user.DAO의_확장_1_3.클래스분리;
+package tobi.study.user.제어의_역전_1_4.오브젝트_팩토리의_활용;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
-class SimpleConnectionMaker {
+class DConnectionMaker implements ConnectionMaker {
+    @Override
     public Connection makeNewConnection() throws ClassNotFoundException, SQLException {
         Class.forName("org.h2.Driver");
         Connection c = DriverManager.getConnection(

@@ -1,4 +1,4 @@
-package tobi.study.user.DAO의_확장_1_3.클래스분리;
+package tobi.study.user.제어의_역전_1_4.오브젝트_팩토리;
 
 import java.sql.Connection;
 import java.sql.DriverManager;

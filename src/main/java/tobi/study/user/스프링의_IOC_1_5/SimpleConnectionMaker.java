@@ -1,4 +1,4 @@
-package tobi.study.user.DAO의_확장_1_3.클래스분리;
+package tobi.study.user.스프링의_IOC_1_5;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
