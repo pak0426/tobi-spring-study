@@ -10,6 +10,10 @@ class UserDao {
     private Connection c;
     private User user;
 
+    public UserDao(ConnectionMaker connectionMaker) {
+        this.connectionMaker = connectionMaker;
+    }
+
     public void add(User user) throws SQLException, ClassNotFoundException {
         this.c = connectionMaker.makeNewConnection();
 
