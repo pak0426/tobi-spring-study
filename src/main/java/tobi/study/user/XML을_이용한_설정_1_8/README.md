@@ -14,7 +14,7 @@ XML은 단순한 텍스트 파일이기 때문에 다루기 쉽다. 또, 쉽게 
 하나의 @Bean 메서드를 통해 얻을 수 있는 빈의 DI 정보는 다음 세 가지다.
 
 1. 빈의 이름
-
+ 
 - @Bean 메서드 이름이 빈의 이름이다. 이 이름은 getBean()에서 사용된다.
 
 2. 빈의 클래스
@@ -141,5 +141,118 @@ new ClassPathXmlApplicationContext("daoContext.xml", UserDao.class);
 
 ### DataSource 인터페이스 적용
 
+javax.sql.DataSource 인터페이스를 살펴보자.
+
 ConnectionMaker는 DB 커넥션을 생성해주는 기능 하나만을 정의한 매우 단순한 인터페이스다. IoC와 DI의 개념을 설명하기 위해 직접 이 인터페이스를 정희하고 사용했지만, 사실 자바에서는 DB 커넥션을 가져오는 오브젝트의 기능을 추상화해서 비슷한 용도로 사용할 수 있게 만들어진 DataSource 인터페이스가 이미 존재한다. 따라서 실전에서 ConnectionMaker와 같은 인터페이스를 직접 만들어서 사용할 일은 없을 것이다.
 
+아래 코드에서 관심을 가질 것은 getConnection() 메서드 하나 뿐이다. 이름만 다르지 ConnectionMaker 인터페이스의 makeConnection()과 목적이 동일한 메서드다. DAO에서는 DataSource의 getconnection() 메서드를 사용해 DB 커넥션을 가져오면 된다.
+
+```java
+public interface DataSource extends CommonDataSource, Wrapper {
+    Connection getConnection() throws SQLException;
+}
+```
+
+DataSource 인터페이스와 구현 클래스를 사용할 수 있도록 UserDao를 리팩토링 해보자.
+
+코드를 아래와 같이 바꿔준다.
+
+```java
+class UserDao {
+    private DataSource dataSource;
+
+    public void setDataSource(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+
+    public void add(User user) throws SQLException, ClassNotFoundException {
+        Connection c = dataSource.getConnection();
+        
+        // ...
+    }
+}
+```
+
+다음은 DataSource 구현 클래스가 필요하다. 앞에서 만들었던 DriverManager를 사용하는 SimpleConnectionMaker처럼 단순한 DataSource 구현 클래스를 하나 가져다 사용하자.
+
+### 자바 코드 설정 방식
+
+먼저 DaoFactory 설정 방식을 이용해보자. 기존 코드를 변경해 보겠다.
+
+```java
+implementation 'com.h2database:h2'
+implementation 'org.springframework:spring-jdbc'
+```
+라이브러리를 추가해준다.
+
+그리고 DaoFactory 클래스를 아래와 같이 수정한다.
+
+```java
+package tobi.study.user.XML을_이용한_설정_1_8;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+
+import javax.sql.DataSource;
+
+@Configuration
+class DaoFactory {
+  @Bean
+  public DataSource dataSource() {
+    SimpleDriverDataSource dataSource = new SimpleDriverDataSource();
+
+    dataSource.setDriverClass(org.h2.Driver.class);
+    dataSource.setUrl("jdbc:h2:tcp://localhost/~/tobiSpringStudy");
+    dataSource.setUsername("sa");
+    dataSource.setPassword("");
+
+    return dataSource;
+  }
+
+  @Bean
+  public UserDao userDao() {
+    UserDao userDao = new UserDao();
+    userDao.setDataSource(dataSource());
+    return userDao;
+  }
+
+  @Bean
+  public ConnectionMaker connectionMaker() {
+    return new DConnectionMaker();
+  }
+
+  public UserDao getUserDao() {
+    UserDao userDao = new UserDao();
+    userDao.setDataSource(dataSource());
+    return userDao;
+  }
+}
+```
+
+그리고 UserDaoTest를 DaoFactory를 사용하도록 바꿔준다음 테스트를 해보자.
+
+```java
+public static void main(String[] args) throws SQLException, ClassNotFoundException {
+//        ApplicationContext context = new GenericXmlApplicationContext("applicationContext.xml");
+    ApplicationContext context = new AnnotationConfigApplicationContext(DaoFactory.class);
+}
+```
+
+### XML 설정 방식
+
+이번에는 XML 설정 방식으로 변경해보자.
+
+먼저 id가 connectionMaker인 <bean>을 없애고 dataSource라는 이름의 <bean>을 등록한다.
+
+```xml
+<bean id="dataSource" class="org.springframework.jdbc.datasource.SimpleDriverDataSource" />
+```
+
+하지만 이 <bean> 설정으로 SimpleDriverDataSource의 오브젝트를 만드는 것까지 가능하지만, dataSource() 메서드에서 수정자로 넣어준 DB 접속 정보는 나타나 있지 않다. UserDao처럼 다른 빈에 의존하는 경우 <property> 태그와 ref 속성으로 의존할 빈 이름을 넣어주면 된다. 하지만 SimpleDriverDataSource 오브젝트의 경우는 단순 Class 타입의 오브젝트나 텍스트 값이다. 그렇다면 XML에서는 어떻게 해서 dataSource() 메서드에서처럼 DB 연결정보를 넣도록 설정을 만들 수 있을까?
+
+## 1.8.4 프로퍼티 값의 주입
+
+### 값 주입
+
+이렇게 다른 빈 오브젝트의 레퍼런스가 아닌 단순 정보도 오브젝트를 초기화하는 과정에서 수정자 메서드에 넣을 수 있다.

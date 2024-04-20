@@ -1,21 +1,22 @@
 package tobi.study.user.XML을_이용한_설정_1_8;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
 class UserDao {
-    private ConnectionMaker connectionMaker;
-    private Connection c;
     private User user;
 
-    public void setConnectionMaker(ConnectionMaker connectionMaker) {
-        this.connectionMaker = connectionMaker;
+    private DataSource dataSource;
+
+    public void setDataSource(DataSource dataSource) {
+        this.dataSource = dataSource;
     }
 
     public void add(User user) throws SQLException, ClassNotFoundException {
-        this.c = connectionMaker.makeNewConnection();
+        Connection c = dataSource.getConnection();
 
         PreparedStatement ps = c.prepareStatement(
                 "insert into users(id, name, password) values (?, ?, ?)"
@@ -31,7 +32,7 @@ class UserDao {
     }
 
     public User get(String id) throws SQLException, ClassNotFoundException {
-        this.c = connectionMaker.makeNewConnection();
+        Connection c = dataSource.getConnection();
 
         PreparedStatement ps = c.prepareStatement(
                 "select * from users where id = ?"
