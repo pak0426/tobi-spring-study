@@ -1,4 +1,4 @@
-package tobi.study.user;
+package tobi.study.user._1장;
 
 class User {
     String id;

@@ -256,3 +256,59 @@ public static void main(String[] args) throws SQLException, ClassNotFoundExcepti
 ### 값 주입
 
 이렇게 다른 빈 오브젝트의 레퍼런스가 아닌 단순 정보도 오브젝트를 초기화하는 과정에서 수정자 메서드에 넣을 수 있다.
+
+텍스트나 단순 오브젝트 등을 수정자 메서드에 넣어주는 것을 스프링에서는 '값을 주입한다'고 말한다. 사용할 오브젝트 자체를 바꾸지는 않지만 오브젝트의 특성은 외부에서 변경할 수 있기 때문이다.
+
+수정자 메서드를 아래와 같이 XML로 전환할 수 있다.
+
+<img width="709" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/a5bd45fe-9347-4ef4-8899-0b0c91b68f8e">
+
+### value 값 자동 변환
+
+driveClass는 스트링 타입이 아니라 java.lang.Class 타입이다. XML에서는 별다른 타입 정보 없이 클래스의 이름이 텍스트 형태로 value에 들어가 있다. 왜 문제가 없을까?
+
+스프링이 프로퍼티의 값을, 수정자 메서드의 파라미터 타입을 참고로 해서 적절한 형태로 변환해주기 때문이다.
+
+내부적으로 아래와 같은 작업이 일어난다고 생각할 수 있다.
+
+<img width="494" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/df2e8f1a-5ef8-4830-b1c6-0e6f53a3e9f5">
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean id="dataSource" class="org.springframework.jdbc.datasource.SimpleDriverDataSource" >
+        <property name="driverClass" value="org.h2.Driver" />
+        <property name="url" value="jdbc:h2:tcp://localhost/~/tobiSpringStudy" />
+        <property name="username" value="sa" />
+        <property name="password" value="" />
+    </bean>
+
+    <bean id="userDao" class="tobi.study.user.XML을_이용한_설정_1_8.UserDao">
+        <property name="dataSource" ref="dataSource" />
+    </bean>
+</beans>
+```
+최종적으로 위와 같이 작성할 수 있다.
+
+## 1.9 정리
+
+1장에서는 사용자 정보를 DB CRUD를 수행할 수 있는 DAO코드를 만들었고 그 문제점을 살펴본 뒤, 이를 다양한 방법과 패턴, 원칙, IoC/DI 프레임워크까지 적용해서 개선해왔다.
+
+1. 책임이 다른 코드를 분리해서 클래스로 만들었다. `(관심사의 분리, 리팩토링)`
+2. 그 중에 바뀔 수 있는 클래스는 인터페이스를 구현하도록 하고, 다른 클래스에서 인터페이스를 통해서만 접근하도록 만들었다. <br><br>
+이렇게 해서 인터페이스를 정의한 쪽의 구현 방법이 달라져 클래스가 바뀌거나 내용이 달라지더라도, 그 기능을 사용하는 클래스의 코드는 같이 수정할 필요가 없도록 만들었다. `(전략 패턴)`
+3. 이를 통해 자신의 책임 자체가 변경되는 경우 외에는 불필요한 변화가 발생하지 않도록 막아주고, 자신이 사용하는 외부 오브젝트의 기능은 자유롭게 확장하거나 변경할 수 있게 만들었다. `(개방 폐쇄 원칙)`
+4. 결국 한쪽의 기능 변화가 다른 쪽의 변경을 요구하지 않아도 되게 했고 `(낮은 결합도)` <br>
+자신의 책임과 관심사에만 순수하게 집중하는 `(높은 응집도)` 깔끔한 코드를 구현했다.
+5. 오브젝트가 생성되고 다른 오브젝트와 관계를 맺는 작업의 제어권을 별도의 오브젝트 팩토리를 만들어서 넘겼다. 또는 오브젝트 팩토리의 기능을 일반화한 IoC 컨테이너로 넘겨서 오브젝트가 자신이 사용할 대상의 생성이나 선택에 대한 책임으로부터 자유롭게 만들어줬다 `(제어의 역전 / IoC)`
+6. 전통적인 싱글톤 패턴 구현 방식의 단점을 살펴보고 서버에서 사용되는 서비스 오브젝트로서의 장점을 살릴 수 있는 싱글톤을 사용하면서도 싱글톤 패턴의 단점을 극복할 수 있도록 설계된 컨테이너를 활용하는 방법에 대해 알아보았다. `(싱글톤 레지스트리)`
+7. 설계 시점과 코드에는 클래스와 인터페이스 사이의 느슨한 의존관계만 만들어놓고, 런타임 시에 실제 사용할 구체적인 의존 오브젝트를 제3자(DI 컨테이너)의 도움으로 주입받아서 다이내믹한 의존관계를 갖게 해주는 IoC의 특별한 케이스를 알아봤다. (의존관계 주입 / DI)
+8. 의존 오브젝트를 주입할 때 생성자를 이용하는 방법과 수정자 메서드를 이용하는 방법을 알아봤다. `(생성자 주입과 수정자 주입)`
+9. 마지막으로, XML을 이용해서 DI 설정정보를 만드는 방법과 의존 오브젝트가 아닌 일반 값을 외부에서 설정해서 런타임 시에 주입하는 방법을 알아봤다. `(XML 설정)`
+
+스프링이란 **어떻게 오브젝트가 설계되고, 만들어지고, 어떻게 관계를 맺고 사용되는지에 관심을 갖는 프레임워크**라는 사실을 꼭 기억해두자. 
+
+스프링의 관심은 오브젝트와 그 관계다. 하지만 오브젝트를 어떻게 설계하고, 분리하고, 개선하고, 어떤 의존관계를 가질지는 개발자의 역할이며 책임이다. 
