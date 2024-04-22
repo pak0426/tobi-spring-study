@@ -3,7 +3,7 @@
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
        xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
 
-<!--    <bean id="connectionMaker" class="tobi.study.user.XML을_이용한_설정_1_8.DConnectionMaker" />-->
+<!--    <bean id="connectionMaker" class="tobi.study.user.STEP1.XML을_이용한_설정_1_8.DConnectionMaker" />-->
     <bean id="dataSource" class="org.springframework.jdbc.datasource.SimpleDriverDataSource" >
         <property name="driverClass" value="org.h2.Driver" />
         <property name="url" value="jdbc:h2:tcp://localhost/~/tobiSpringStudy" />
@@ -11,7 +11,7 @@
         <property name="password" value="" />
     </bean>
 
-    <bean id="userDao" class="tobi.study.user.XML을_이용한_설정_1_8.UserDao">
+    <bean id="userDao" class="tobi.study.user.STEP1.XML을_이용한_설정_1_8.UserDao">
         <property name="dataSource" ref="dataSource" />
     </bean>
 </beans>

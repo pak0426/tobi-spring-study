@@ -9,5 +9,4 @@ class TobiSpringStudyApplication {
     public static void main(String[] args) {
         SpringApplication.run(TobiSpringStudyApplication.class, args);
     }
-
 }
