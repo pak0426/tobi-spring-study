@@ -20,6 +20,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework:spring-jdbc'
     implementation 'com.h2database:h2'
+    implementation 'org.junit.jupiter:junit-jupiter-engine'
+    implementation 'org.junit.jupiter:junit-jupiter-api'
 
     runtimeOnly 'com.h2database:h2'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
