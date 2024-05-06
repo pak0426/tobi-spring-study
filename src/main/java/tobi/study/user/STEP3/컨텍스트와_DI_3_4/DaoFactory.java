@@ -38,8 +38,6 @@ class DaoFactory {
     public UserDao userDao() {
         UserDao userDao = new UserDao();
         userDao.setDataSource(dataSource());
-        userDao.setJdbcContext(jdbcContext());
-        userDao.setJdbcContextInterface(jdbcContextInterface());
         return userDao;
     }
 }

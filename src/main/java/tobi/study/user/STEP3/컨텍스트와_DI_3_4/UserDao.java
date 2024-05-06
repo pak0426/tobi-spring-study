@@ -14,15 +14,10 @@ class UserDao {
     private JdbcContextInterface jdbcContextInterface;
 
     public void setDataSource(DataSource dataSource) {
+        this.jdbcContext = new JdbcContext();
+        this.jdbcContext.setDataSource(dataSource);
+        this.jdbcContextInterface = new JdbcContextImpl(dataSource);
         this.dataSource = dataSource;
-    }
-
-    public void setJdbcContext(JdbcContext jdbcContext) {
-        this.jdbcContext = jdbcContext;
-    }
-
-    public void setJdbcContextInterface(JdbcContextInterface jdbcContextInterface) {
-        this.jdbcContextInterface = jdbcContextInterface;
     }
 
     public void add(final User user) throws SQLException {

@@ -233,3 +233,43 @@ class UserDao {
 인터페이스 방식은 위와 같이 생성자 주입을 이용해서 DI를 해주면 된다.
 
 #### 코드를 이용하는 수동 DI
+
+JdbcContext를 스프링의 빈으로 등록해서 UserDao에 DI 하는 대신 사용할 수 있는 방법이 있다. UserDao 내부에서 직접 DI를 적용하는 방법이다.
+
+이 방법을 쓰려면 JdbcContext를 스프링의 빈으로 등록해서 사용했던 첫 번째 이유인 싱글톤으로 만들려는 것은 포기해야 한다. 물론 스프링의 도움을 받아서 싱글톤으로 포기헀다고 해서 DAO 메서드가 호출될 때마다 JdbcContext 오브젝트를 새로 만드는 무식한 방법을 사용해야 한다는 뜻은 아니다. 조금만 타협을 해서 DAO마다 하나의 JdbcContext 오브젝트를 갖고 있게 하는 것이다. DAO 메서드에서 매번 만들어 사용한다면 수만, 수백만의 JdbcContext 오브젝트가 만들어지겠지만, DAO마다 하나씩 만든다면 기껏해야 DAO 개수만큼, 웬만한 대형 프로젝트라고 하더라도 수백 개면 충분할 것이다. JdbcCOntext에는 내부에 두는 상태정보가 없다. 따라서 오브젝트 수십, 수백 개가 만들어진다고 해도 메모리에 주는 부담은 거의 없다. 또한 자주 만들어졌다가 제거되는 게 아니기 때문에 GC에 대한 부담도 없다.
+
+JdbcContext를 스프링 빈으로 등록하지 않았으므로 다른 누군가가 JdbcContext의 생성과 초기화를 책임져야 한다. JdbcContext의 제어권은 UserDao가 갖는 것이 적당하다. 자신이 사용할 오브젝트를 직접 만들고 초기화하는 전통적인 방법을 사용하는 것이다. 어차피 JdbcContext 클래스의 정체도 알고 있으니 문제 될 것은 없다.
+
+남은 문제는 JdbcContext를 스프링 빈으로 등록해서 사용했던 두 번째 이유다. JdbcContext는 다른 빈을 인터페이스를 통해 간접적으로 의존하고 있다. 다른 빈을 의존하고 있다면, 의존 오브젝트를 DI를 통해 제공받기 위해서라도 자신도 빈으로 등록돼야 한다고 했다. 그렇다면 UserDao에서 JdbcContext를 직접 생성해서 사용하는 경우에는 어떻게 해야 할까? 여전히 JdbcContext는 DataSource 타입 빈을 다이내믹하게 주입받아서 사용해야 한다. 그렇지 않으면 DataSoruce 타입 빈을 다이내믹하게 주입 받아서 사용해야 한다.
+
+하지만 JdbcContext 자신은 스프링의 빈이 아니니 DI 컨테이너를 통해 DI 받을 수는 없다. 이런 경우에 사용할 수 있는 방법이 한 가지 있다. 그것은 JdbcContext에 대한 제어권을 갖고 생성과 관리를 담당하는 UserDao에게 DI까지 맡기는 것이다.
+
+<img width="552" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/1b6eddc1-3b6a-4ea2-8445-f5ef1ef8c370">
+
+스프링의 설정파일에 userDao와 dataSource 두 개만 빈으로 정의한다. 
+
+```java
+class UserDao {
+    private User user;
+
+    private DataSource dataSource;
+    private JdbcContext jdbcContext;
+    private JdbcContextInterface jdbcContextInterface;
+
+    public void setDataSource(DataSource dataSource) {
+        this.jdbcContext = new JdbcContext();
+        this.jdbcContext.setDataSource(dataSource);
+        this.jdbcContextInterface = new JdbcContextImpl(dataSource);
+        this.dataSource = dataSource;
+    }
+    
+    // ...
+}
+```
+setDataSource() 메서드는 DI 컨테이너가 DataSource 오브젝트를 주입해줄 때 호출된다. 이때 JdbcContext에 대한 수동 DI 작업을 진행하면 된다. 먼저 JdbcContext의 오브젝트를 만들어서 인스턴스 변수에 저장해두고, JdbcContext에 UserDao가 DI 받은 DataSource 오브젝트를 주입해주면 완벽한 DI 작업이 완료된다. UserDao의 메서드에서는 JdbcContext가 외부에서 빈으로 만들어져 주입된 것인지, 내부에서 직접 만들고 초기화한 것인지 구분할 필요도 없고 구분할 수도 없다. 필요에 따라 JdbcContext를 사용하기만 하면 된다.
+
+이 방법의 장점은 굳이 인터페이스를 두지 않아도 될 만큼 긴밀한 관계를 갖는 DAO 클래스와 JdbcContext를 어색하게 따로 빈으로 분리하지 않고 내부에서 직접 만들어 사용하면서도 다른 오브젝트에 대한 DI를 적용할 수 있다는 점이다. 이렇게 한 오브젝트의 수정자 메서드에서 다른 오브젝트를 초기화하고 코드를 이용해 DI 하는 것은 스프링에서도 종종 사용되는 기법이다.
+
+인터페이스를 사용하지 않는 클래스와의 의존관계이지만 스프링의 DI를 이용하기 위해 빈으로 등록해서 사용하는 방법은 오브젝트 사이의 실제 의존관계가 설정파일에 명확하게 드러난다는 장점이 있다. 하지만 DI의 근본적인 원칙에 부합하지 않는 구체적인 클래스와의 관계가 설정에 직접 노출된다는 단점이 있다.
+
+반면에 DAO의 코드를 이용해 코드를 이용해 수동으로 DI를 하는 방법은 JdbcContext가 UserDao의 내부에서 만들어지고 사용되면서 그 관계를 외부에는 드러내지 않는다는 장점이 있다. 필요에 따라 내부에서 은밀히 DI를 수행하고 그 전략을 외부에는 감출 수 있다. 하지만 JdbcContext를 여러 오브젝트가 사용하더라도 싱글톤으로 만들 수 없고, DI 작업을 위한 부가적인 코드가 필요하다는 단점도 있다.
