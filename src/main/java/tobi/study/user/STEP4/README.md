@@ -174,3 +174,114 @@ JdbcContext나 JdbcTemplate이 사용하는 콜백 오브젝트는 메서드 선
 하지만 콜백 템플릿처럼 긴밀하게 역할을 분담하고 있는 관계가 아니라면 자신의 코드에서 발생하는 예외를 그냥 던져버리는 건 무책임한 책임회피일 수 있다. 만약 DAO가 SQLException을 생각 없이 던져버리면 어떻게 될까? DAO를 사용하는 서비스 계층이나 웹 컨트롤러에서 과연 SQLException을 제대로 처리할 수 있을까? 아마도 이런 경우라면 DAO에서 던진 SQLException을 서비스 계층 메서드가 다시 던지고, 컨트롤러도 다시 던지도록 선언해서 예외는 그냥 서버로 전달되고 말 것이다. 아마도 throws SQLException과 같이 구체적인 예외를 던지도록 선언하기가 귀찮아서 모든 예외를 생각 없이 던져버리게 하는 throws Exception을 사용할 가능성이 높다.
 
 **예외를 회피하는 것은 예외를 복구하는 것처럼 의도가 분명해야 한다.** 콜백/템플릿처럼 긴밀한 관계에 있는 다른 오브젝트에게 예외처리 책임을 분명하게 지게 하거나, 자신을 사용하는 쪽에서 예외를 다루는 게 최선의 방법이라는 분명한 확신이 있어야 한다.
+
+#### 예외 전환
+
+마지막으로 예외를 처리하는 방법은 **예외 전환**을 하는 것이다. 예외 회피와 비슷하게 예외를 복구해서 정상적인 상태로는 만들 수 없기 때문에 예외를 메서드 밖으로 던지는 것이다. **하지만 예외 회피와 달리, 발생한 예외를 그대로 넘기는 게 아니라 적절한 예외로 전환해서 던진다는 특징이 있다.**
+
+예외 전환은 보통 두 가지 목적으로 사용된다.
+
+첫째는 **내부에서 발생한 예외를 그대로 던지는 것이 그 예외상황에 대한 적절한 의미를 부여해주지 못하는 경우에, 의미를 분명하게 해줄 수 있는 예외로 바꿔주기 위해서다.** API가 발생하는 기술적인 로우레벨을 상황에 적합한 의미를 가진 예외로 변경하는 것이다. 
+
+예를 들어 새로운 사용자들 등록하려고 시도했을 때 아이디가 같은 사용자가 있어서 DB 에러가 발생하면 JDBC API는 SQLException을 발생시킨다. 이 경우 DAO 메서드가 SQLException을 그대로 밖으로 던져버리면, DAO를 이용해 사용자를 추가하려고 한 서비스 계층 등에서는 왜 SQLException이 발생했는지 쉽게 알 방법이 없다. 로그인 아이디 중복 같은 경우는 충분히 예상 가능하고 복구 가능한 예외 상황이다. 이럴 땐 DAO에서 SQLException의 정보를 해석해서 DuplicatedUserIdException 같은 예외로 바꿔서 던져주는 게 좋다. 의미가 분명한 예외가 던져지면 서비스 계층 오브젝트에는 적절한 복구 작업을 시도할 수 있다. 서비스 계층 오브젝트에서 SQLException의 원인을 해석해서 대응하는 것도 불가능하지는 않지만, 특정 기술의 정보를 해석하는 코드를 비즈니스 로직을 담은 서비스 계층에 두는 건 매우 어색하다. 따라서 DAO 메서드에서 기술에 독립적이며 의미가 분명한 예외로 전환해서 던져줄 필요가 있다.
+
+아래 코드는 중복된 아이디 값 때문에 에러가 나는 경우를 좀 더 의미 있는 DuplicateKeyException으로 전환해주는 DAO 메서드의 예시다.
+
+```java
+public void add(User user) throws DuplicatedUserIdException, SQLException {
+    try {
+    
+    }
+    catch(SQLException e) {
+        if (e.getErrorCode() == MysqlErrorNumbers.ER_DUP_ENTRY)
+            throw DuplicatedUserIdException();
+        else
+            throw e;
+    }
+}
+```
+
+보통 전환하는 예외에 원래 발생한 예외를 담아서 **중첩 예외**로 만드는 것이 좋다. 중첩 예외는 getCause() 메서드를 이용해서 처음 발생한 예외가 무엇인지 확인 할 수 있다. 중첩 예외는 아래 코드 2개 처럼 새로운 예외를 만들면서 생성자나 initCause() 메서드로 근본 원인이 되는 예외를 넣어주면 된다.
+
+중첩 예외1
+```java
+catch(SQLException e) {
+   ...
+   throw DuplicatedUserIdException(e);         
+}
+```
+
+중첩 예외2
+```java
+catch(SQLException e) {
+   ...
+   throw DuplicatedUserIdException().initCause(e);         
+}
+```
+
+두 번째 전환 방법은 예외를 처리하기 쉽고 단순하게 만들기 위해 포장하는 것이다. 중첩 예외를 이용해 새로운 예외를 만들고 원인이 되는 예외를 내부에 담아서 던지는 방식은 같다. 하지만 의미를 명확하게 하려고 다른 예외로 전환하는 것이 아니다. 주로 예외처리를 강제하는 체크 예외를 언체크 예외인 런타임 예외로 바꾸는 경우에 사용한다.
+
+대표적으로 EJBException을 들 수 있다. EJB 컴포넌트 코드에서 발생하는 대부분의 체크 예외는 비즈니스 로직으로 볼 때 의미 있는 예외이거나 복구 가능한 예외가 아니다. 이런 경우에는 런타임 예외인 EJBException으로 포장해서 던지는 편이 낫다.
+
+<img width="577" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/77d5ca36-d97f-449c-a8c1-3964d868c3e0">
+
+EJBException은 RuntimeException 클래스를 상속한 런타임 예외다. 이렇게 런타임 예외로 만들어서 전달하면 EJB는 이를 시스템 익셉션으로 인식하고 트랜잭션을 자동으로 롤백해준다. 런타임 예외이기 때문에 EJB 컴포넌트를 사용하는 다른 EJB나 클라이언트에서 일일이 예외를 잡거나 다시 던지는 작업을 할 필요가 없다. 이런 예외는 잡아도 복구할 만한 방법이 없기 때문이다.
+
+반대로 애플리케이션 로직상에서 예외조건이 발견되거나 예외상황이 발생할수도 있다. 이런 것은 API가 던지는 예외가 아니라 애플리케이션 코드에서 의도적으로 던지는 예외다. 이때는 체크 예외를 사용하는 것이 적절하다. **비즈니스적인 의미가 있는 예외는 이에 대한 적절한 대응이나 복구 작업이 필요하기 때문이다.**
+
+일반적으로 체크 예외를 계속 throws를 사용해 넘기는건 무의미하다. 메서드 선언은 지저분해지고 장점이 없다. 어차피 복구 불가능한 예외라면 가능한 한 빨리 런타임 예외로 포장해 던지게 해서 다른 계층의 메서드를 작성할 때 불필요한 throws 선언이 들어가지 않도록 해줘야 한다.
+
+### 4.1.4 예외처리 전략
+
+사실 자바의 예외를 이용하는 것은 간단하다. 하지만 예외를 효과적으로 사용하고, 예외가 발생하는 코드를 깔끔하게 정리하는 데는 여러 가지 신경 써야 할 사항이 많다. 지금까지 살펴본 예외의 종류와 처리 방법 등을 기준으로 일관된 예외처리 전략을 정리해보자. 
+
+
+#### 런타임 예외의 보편화
+
+일반적으로 체크 예외가 일반적인 예외를 다루고, 언체크 예외는 시스템 장애나 프로그램상의 오류에 사용한다고 했다. 문제는 체크 예외는 복구할 가능성이 조금이라도 있는, 말 그대로 예외적인 상황이기 때문에 자바는 이를 처리하는 catch 블록이나 throws 선언을 강제하고 있다는 점이다.
+
+자바 엔터프라이즈 서버환경은 수많은 사용자가 동시에 요청을 보내고 각 요청이 독립적인 작업으로 취급된다. 하나의 요청을 처리하는 중에 예외가 발생하면 해당 작업만 중단시키면 그만이다. 독립형 애플리케이션과 달리 서버의 특정 계층에서 예외가 발생했을 때 작업을 일시 중지하고 사용자와 바로 커뮤니케이션하면서 예외상황을 복구할 수 있는 방법이 없다.
+
+차라리 애플리케이션 차원에서 예외상황을 미리 파악하고, 예외가 발생하지 않도록 차단하는 게 좋다. 또는 프로그램의 오류나 외부 환경으로 인해 예외가 발생하는 경우라면 빨리 해당 요청의 작업을 취소하고 서버 관리자나 개발자에게 통보해주는 편이 낫다.
+
+#### add() 메서드의 예외처리
+
+```java
+public void add(User user) throws DuplicatedUserIdException, SQLException {
+    ...
+}
+```
+
+위 코드의 add() 메서드는 DuplicatedUserIdException, SQLException 두 가지 체크 예외를 던지게 되어 있다. JDBC 코드에서 SQLException이 발생할 수 있는데, 그 원인이 ID 중복이라면 좀 더 의미 있는 예외인 DuplicatedUserIdException 으로 전환해주고, 아니라면 SQLException 을 그대로 던지게 했다. DuplicatedUserIdException 은 충분히 복구 가능한 예외이므로 add() 메서드를 사용하는 쪽에서 잡아서 대응할 수 있다. 하지만 SQLException 은 대부분 복구 불가능한 예외이므로 잡아봤자 처리할 것도 없고, 결국 throws 를 타고 계속 앞으로 전달되다가 애플리케이션 밖으로 던져질 것이다. 그럴 바에는 그냥 런타임 예외로 포장해 던져버려서 그 밖의 메서드들이 신경 쓰지 않게 해주는 편이 낫다.
+
+DuplicatedUserIdException 도 굳이 체크 예외로 둬야 하는 것은 아니다. DuplicatedUserIdException처럼 의미 있는 예외는 add() 메서드를 바로 호출한 오브젝트 대신 더 앞단의 오브젝트에서 다룰 수 있다. **어디에서든 DuplicatedUserIdException 을 잡아서 처리할 수 있다면 굳이 체크 예외로 만들지 않고 런타임 예외로 만드는 게 낫다. 대신 add() 메서드를 사용하는 코드를 개발자에게 의미 있는 정보를 전달해줄 수 있다.**
+
+이 방법을 이용해 add() 메서드를 수정해보자.
+
+```java
+class DuplicatedUserIdException extends RuntimeException {
+    public DuplicatedUserIdException(Throwable cause) {
+        super(cause);
+    }
+}
+```
+
+이제 add() 메서드를 수정하자. 기존 코드는 SQLException 을 직접 메서드 밖으로 던지게 했는데, 이제는 런타임 예외로 전환해서 던지도록 만든다. 기존의 아이디 중복 때문에 SQLException이 발생한 경우에는 DuplicatedUserIdException을 던지게 하는 코드는 그대로 두면 된다.
+
+```java
+public void add(User user) throws DuplicatedUserIdException {
+    try {
+    
+    }
+    catch(SQLException e) {
+        if (e.getErrorCode() == MysqlErrorNumbers.ER_DUP_ENTRY)
+            throw new DuplicatedUserIdException(); // 예외 전환
+        else
+            throw new RuntimeException(); // 예외 포장
+    }
+}
+```
+
+이제 이 add() 메서드를 사용하는 오브젝트는 SQLException 을 처리하기 위해 불필요한 throws 선언을 할 필요는 없으면서 필요한 경우 아이디 중복 상황을 처리하기 위해 DuplicatedUserIdException 을 이용할 수 있다. DuplicatedUserIdException 이 발생한 경우라면 사용자가 요청한 아이디 대신 사용할 수 있는 추천 아이디를 만들어 아이디 중복 메시지와 함께 제공해주는 방법을 사용하면 좋을 것이다.
+
+#### 애플리케이션 예외
