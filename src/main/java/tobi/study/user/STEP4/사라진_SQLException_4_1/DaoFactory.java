@@ -1,4 +1,4 @@
-package tobi.study.user.STEP4;
+package tobi.study.user.STEP4.사라진_SQLException_4_1;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
