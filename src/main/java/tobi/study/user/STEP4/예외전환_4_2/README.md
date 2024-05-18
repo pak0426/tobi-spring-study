@@ -149,3 +149,31 @@ public void add(User user) throws Exception;
 ```java
 public void add(User user);
 ```
+
+이제 DAO에서 사용하는 기술에 완전히 독립적인 인터페이스 선언이 가능해졌다. 하지만 이것만으로 충분할까?
+
+대부분의 데이터 액세스 예외는 애플리케이션에서는 복구 불가능하거나 할 필요가 없다는 것이다. 그렇다고 모든 예외를 무시해야 하는 건 아니다. 중복 키 에러처럼 비즈니스 로직에서 의미 있게 처리할 수 있는 예외도 있다. 애플리케이션에서는 사용하지 않더라도 시스템 레벨에서 데이터 액세스 예외를 의미 있게 분류할 필요도 있다. 문제는 데이터 액세스 기술이 달라지면 같은 상황에서도 다른 종류의 예외가 던져진다는 점이다. 따라서 DAO를 사용하는 클라이언트 입장에서는 DAO의 사용 기술에 따라서 예외 처리 방법이 달라져야 한다. 결국 클라이언트가 DAO의 기술에 의존적이 될 수밖에 없다. 단지 인터페이스로 추상화하고, 일부 기술에서 발생하는 체크 예외를 런타임 예외로 전환하는 것만으론 불충분하다.
+
+#### 데이터 액세스 예외 추상화와 DataAccessException 계층구조
+
+그래서 스프링은 자바의 다양한 데이터 액세스 기술을 사용할 때 발생하는 예외들을 추상화해서 DataAccessException 계층구조 안에 정리해놓았다.
+
+앞에서 살펴본 것처럼 스프링의 JdbcTemplate은 SQLException의 에러 코드를 DB별로 매핑해서 그에 해당하는 의미 있는 DataAccessException의 서브클래스 중 하나로 전환해서 던져준다. 그렇다고 DataAccessException 클래스들이 단지 JDBC의 SQLException을 전환하는 용도로만 쓰이는 건 아니다.
+
+DataAccessException은 자바의 주요 데이터 액세스 기술에서 발생할 수 있는 대부분의 예외를 추상화하고 있다. 데이터 액세스 기술에 상관없이 공통적인 예외도 있지만 일부 기술에서만 발생하는 예외도 있다. JPA, 하이버네이트처럼 ORM에서는 발생하지만 JDBC에는 없는 예외가 있다. 스프링의 DataAccessException은 이런 일부 기술서에서만 공통적으로 나타나는 에외를 포함해서 데이터 액세스 기술에서 발생 가능한 대부분의 예외를 계층구조로 분류해놨다.
+
+예를 들어 JDBC, JDO, JPA, 하이버네이트에 상관없이 데이터 엑세스 기술을 부정하게 사용했을 때는 InvalidDataAccessResourceUsageException 예외가 던져진다. 
+
+또는 JDO, JPA, 하이버네이트처럼 오브젝트/엔티티 단위로 정보를 업데이트하는 경우에는 낙관적인 락킹(Optimistic locking)이 발생할 수 있다. 이 낙관적인 락킹은 같은 정보를 두 명 이상의 사용자가 동시에 조회하고 순차적으로 업데이트 할 때, 뒤늦게 업데이트한 것이 먼저 업데이트한 것을 덮어쓰지 않도록 막아주는 데 쓸 수 있는 편리한 기능이다. 이런 예외들은 사용자에게 적절한 안내 메시지를 보여주고, 다시 시도할 수 있도록 해줘야 한다. 하지만 역시 JDO, JPA, 하이버네이트마다 다른 종류의 낙관적인 락킹 예외를 발생시킨다. 그런데 스프링의 예외 전환 방법을 적용하면 기술에 상관없이 DataAccessException의 서브클래스인 ObjectOptimisticLockingFailureException 으로 통일 시킬 수 있다.
+
+ORM 기술이 아니지만 JDBC 등을 이용해 직접 낙관적인 락킹 기능을 구현했다고 해보자. 이때는 아래 그림처럼 ObjectOptimisticLockingFailureException의 슈퍼 클래스 OptimisticLockingFailureException 을 정의해 사용할 수도 있다. 기술에 상관없이 낙관적인 락킹이 발생했을 때 일관된 방식으로 예외처리를 해주려면 ObjectOptimisticLockingFailureException 을 잡도록 만들면 된다. 어던 데이터 액세스 기술을 사용했는지에 상관없이 낙관적인 락킹을 처리하는 코드를 만들어낼 수 있다.
+
+<img width="584" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/23f8a0fe-e21e-46ba-bb04-52b68429f8c9">
+
+DataAccessException 계층구조에는 템플릿 메서드나 DAO 메서드에서 직접 활용할 수 있는 예외도 정의되어 있다. JdbcTemplate의 queryForObject() 메서드는 한 개의 로우만 돌려주는 쿼리에 사용하도록 되어 있다. 쿼리 실행 결과가 하나 이상의 로우를 가져오면, 템플릿 메서드의 사용 방법에 문제가 있거나 SQL을 잘못 작성한 것이다. 이런 경우에 JDBC에서는 예외가 발생하지 않는다. 하지만 JdbcTemplate 에서 볼 때는 기대한 결과가 나오지 않은 예외상황이다. 이런 경우에 사용할 수 있도록 DataAccessException 계층구조에는 IncorrectResultSizeDataAccessException이 정의되어 있다. queryForObject() 에서는 좀 더 자세한 정보를 담은 서브클래스인 EmptyResultDataAccessException 을 발생시킨다.
+
+아래 그림은 스프링 DataAccessException 계층구조의 일부다.
+
+<img width="360" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/0f0fea1f-0e61-4083-9418-5a6a67498ed2">
+
+JdbcTemplate과 같이 스프링의 데이터 액세스 지원 기술을 이용해 DAO를 만들면 사용 기술에 독립적인 일관성 있는 예외를 던질 수 있다. 결국 인터페이스 사용, 런타임 예외 전환과 함께 DataAccessException 예외 추상화를 적용하면 데이터 액세스 기술과 구현 방법에 독립적이고 이상적인 DAO를 만들 수가 있다.
