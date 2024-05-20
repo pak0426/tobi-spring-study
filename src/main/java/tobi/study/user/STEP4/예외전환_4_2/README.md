@@ -177,3 +177,148 @@ DataAccessException 계층구조에는 템플릿 메서드나 DAO 메서드에�
 <img width="360" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/0f0fea1f-0e61-4083-9418-5a6a67498ed2">
 
 JdbcTemplate과 같이 스프링의 데이터 액세스 지원 기술을 이용해 DAO를 만들면 사용 기술에 독립적인 일관성 있는 예외를 던질 수 있다. 결국 인터페이스 사용, 런타임 예외 전환과 함께 DataAccessException 예외 추상화를 적용하면 데이터 액세스 기술과 구현 방법에 독립적이고 이상적인 DAO를 만들 수가 있다.
+
+### 4.2.4 기술에 독립적인 UserDao 만들기
+
+#### 인터페이스 적용
+
+지금까지 만들어서 써왔던 UserDao 클래스를 이제 인터페이스와 구현으로 분리해보자. 인터페이스와 구현 클래스의 이름을 정하는 방법은 여러 가지가 있다. 인터페이스를 구분하기 위해 인터페이 이름 앞에는 I라는 접두어를 붙이는 방법도 있고, 인터페이스 이름은 가장 단순하게 하고 구현 클래스는 각각의 특징을 따르는 이름을 붙이는 경우도 있다. 여기서는 후자의 방법을 사용해보자. 사용자 처리 DAO의 이름은 UserDao라 하고, JDBC를 이용해 구현한 클래스의 이름을 UserDaoJdbc 라고 하자. 나중에 JPA나 하이버네이트로 구현한다면 그때는 UserDaoJpa, UserDaoHibernate라고 이름을 붙일 수 있다.
+
+UserDao 인터페이스에는 기존 UserDao 클래스에서 DAO의 기능을 사용하려는 클라이언트들이 필요한 것만 추출해내면 된다.
+
+아래 코드는 인터페이스로 만든 UserDao 다.
+
+```java
+public interface UserDao {
+    void add(User user);
+    User get(String id);
+    List<User> getAll();
+    void deleteAll();
+    int getCount();
+}
+```
+
+public 접근자를 가진 메서드이긴 하지만 UserDao의 setDataSource() 메서드는 인터페이스에 추가하면 안된다. setDataSource() 메서드는 UserDao의 구현 방법에 따라 변경될 수 있는 메서드이고, UserDao를 사용하는 클라이언트가 알고 있을 필요도 없다. 따라서 setDataSource()는 포함시키지 않는다.
+
+이제 기존의 UserDao 클래스는 다음과 같이 변경하고 구현체를 만들어 보자.
+
+```java
+public class UserDaoJdbc implements UserDao {
+    // ...
+}
+```
+
+또 한가지 변경 사항은 DaoFactory에 의존성을 주입해주는 빈  설정이다.
+
+```java
+@Configuration
+class DaoFactory {
+    @Bean
+    public DataSource dataSource() {
+        SimpleDriverDataSource dataSource = new SimpleDriverDataSource();
+
+        dataSource.setDriverClass(org.h2.Driver.class);
+        dataSource.setUrl("jdbc:h2:tcp://localhost/~/tobiSpringStudy");
+        dataSource.setUsername("sa");
+        dataSource.setPassword("");
+
+        return dataSource;
+    }
+
+    @Bean
+    public UserDao userDao() {
+        UserDaoJdbc userDaoJdbc = new UserDaoJdbc();
+        userDaoJdbc.setDataSource(dataSource());
+        return userDaoJdbc;
+    }
+}
+```
+
+#### 테스트 보완
+
+이제 남은 것은 기존 UserDao 클래스의 테스트 코드다. 다음과 같은 UserDao 인스턴스 변수도 변경해야할까?
+
+class UserDaoTest {
+    private UserDao userDao;
+
+    // ...
+}
+
+굳이 그럴 필요는 없다. DaoFactory에서 UserDao에 어떤 객체의 의존성을 주입해줄지 결정해주기 때문이다.
+
+아래 그림은 UserDao의 인터페이스와 구현을 분리함으로써 데이터 액세스의 구체적인 기술과 UserDao의 클라이언트 사이에 DI가 적용된 모습을 보여준다. 아직 UserDao를 사용하는 애플리케이션 코드를 만들지는 않았지만 일단 테스트를 하나의 클라이언트라고 생각해도 좋다.
+
+<img width="489" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/0a134fa9-acb7-4d0c-be8e-1edeff98d993">
+
+이제 UserDaoTest에 중복된 키를 가진 정보를 등록했을 때 어떤 예외가 발생하는지 확인하기 위해 테스트를 추가해보자.
+
+```java
+    @Test
+    public void duplicateKey() {
+        userDao.deleteAll();
+        userDao.add(user1);
+        assertThrows(DataAccessException.class, () -> userDao.add(user1));
+    }
+```
+
+기본키 중복 때문에 예외가 발생할 것이다.
+
+이번에는 assertThrows 부분 없이 중복 키를 추가하는 테스트를 실행해보자.
+
+```
+org.springframework.dao.DuplicateKeyException: PreparedStatementCallback; SQL [insert into users(id, name, password) values (?, ?, ?)]; Unique index or primary key violation: "PUBLIC.PRIMARY_KEY_4 ON PUBLIC.USERS(ID) VALUES ( /* 1 */ 'a' )"; SQL statement:
+insert into users(id, name, password) values (?, ?, ?) [23505-224]
+```
+
+그림 4-3을 보면 DuplicateKeyException 은 DataAccessException의 서브클래스로 DataIntegrityViolationException의 한 종류임을 알 수 있다. 이 테스트의 assertThrows 예상 예외를 DuplicateKeyException 으로 바꾸고 테스트를 실행해보자. 테스트는 역시 성공할 것이다.
+
+#### DataAccessException 활용 시 주의사항
+
+이렇게 스프링을 활용하면 DB 종류나 데이터 액세스 기술에 상관없이 키 값이 중복이 되는 상황에서는 동일한 예외가 발생하리라고 기대할 것이다. 하지만 DuplicateKeyException 은 아직까지 JDBC를 이용하는 경우에만 발생한다.
+
+만약 DAO에서 사용되는 기술의 종류와 상관없이 동일한 예외를 얻고 싶다면 DuplicatedUserIdException 처럼 직접 예외를 정의해두고, 각 DAO의 add() 메서드에 좀 더 상세한 예외 전환을 해줄 필요가 있다. 
+
+테스트를 하나 더 만들어 SQLException 을 직접 해석해 DataAccessException으로 변환하는 코드의 사용법을 살펴보자.
+
+스프링은 SQLException을 DataAccessException으로 전환하는 다양한 방법을 제공한다. 가장 보편적이고 효과적인 방법은 DB 에러 코드를 이용하는 것이다. SQLException 을 코드에서 직접 전환하고 싶다면 SQLExceptionTranslator 인터페이스를 구현한 클래스 중에서 SQLErrorCodeSQLExceptionTranslator 를 사용하면 된다.
+
+이 SQLErrorCodeSQLExceptionTranslator 는 에러 코드 변환에 필요한 DB의 종류를 알아내기 위해 현재 연결된 DataSource 를 필요로 한다.
+
+아래는 DataSource 를 사용해 SQLException 에서 직접 DuplicateKeyException 으로 전환하는 기능을 확인해보는 테스트이다.
+
+```java
+@Test
+public void sqlExceptionTranslate() {
+    userDao.deleteAll();
+
+    try {
+        userDao.add(user1);
+        userDao.add(user1);
+    }
+    catch (DuplicateKeyException ex) {
+        SQLException sqlEx = (SQLException) ex.getRootCause();
+        SQLExceptionTranslator set = new SQLErrorCodeSQLExceptionTranslator(userDao.getDataSource());
+
+        DataAccessException translate = set.translate(null, null, sqlEx);
+        assertTrue(set.translate(null, null, sqlEx) instanceof DuplicateKeyException);
+    }
+}
+```
+
+먼저 JdbcTemplate 을 사용하는 UserDao 를 이용해 강제로 DuplicateKeyException 을 발생시킨다. 이렇게 가져온 DuplicateKeyException 은 중첩된 예외로 JDBC API 에서 처음 발생한 SQLException 을 내부에 갖고 있다. getRootCause() 메서드를 이용하면 중첩되어 있는 SQLException 을 가져올 수 있다.
+
+이제 검증해볼 사항은 스프링의 예외 전환 API를 직접 적용해서 DuplicateKeyException 이 만들어지는가이다. 주입받은 dataSource 를 이용해 SQLErrorCodeSQLExceptionTranslator 의 오브젝트를 만든다. 그리고 SQLException 을 파라미터로 넣어서 translate() 메서드를 호출해주면 SQLException 을 파라미터로 넣어서 translate() 메서드를 호출해주면 SQLException 을 DataAccessException 타입의 예외로 변환해준다. 변환된 DataAccessException 타입의 예외가 정확히 DuplicateKeyException 타입인지를 확인하면 된다.
+
+## 4.3 정리
+
+4장에서는 엔터프라이즈 애플리케이션에서 사용할 수 있는 바람직한 예외처리 방법은 무엇인지를 살펴봤다. 또한 JDBC 예외의 단점이 무엇인지 살펴보고, 스프링이 제공하는 효과적인 데이터 액세스 기술의 예외처리 전략과 기능에 대해서도 알아봤다. 이 장에서 살펴본 주요 내용은 다음과 같다.
+
+- 예외를 잡아서 아무런 조취를 취하지 않거나 의미 없는 throws 선언을 남발하는 것은 위험하다.
+- 예외는 복구하거나 예외처리 오브젝트로 의도적으로 전달하거나 적절한 예외로 전환해야 한다.
+- 좀 더 의미 있는 예외로 변경하거나, 불필요한 catch/throws 를 피하기 위해 런타임 예외로 포장하는 두 가지 방법의 예외 전환이 있다.
+- 복구할 수 없는 예외는 가능한 한 빨리 런타임 예외로 전환하는 것이 바람직하다.
+- 애플리케이션의 로직을 담기 위한 예외는 체크 예외로 만든다.
+- JDBC의 SQLException은 대부분 복구할 수 없는 예외이므로 런타임 예외로 포장해야 한다.
+- SQLException의 에러 코드는 DB에 종속되기 때문에 DB에 독립적인 예외로 전환될 필요가 있다.
+- 스피링은 DataAccessException 을 통해 DB에 독립적으로 적용 가능한 추상화된 런ㄴ타임 예외 계층을 제공한다.
+- DAO를 데이터 액세스 기술에서 독립시키려면 인터페이스 도입과 런타임 예외 전환, 기술에 독립적인 추상화된 예외로 전환이 필요하다.
