@@ -29,9 +29,9 @@ class UserDaoTest {
         ApplicationContext context = new AnnotationConfigApplicationContext(DaoFactory.class);
         userDao = context.getBean("userDao", UserDao.class);
 
-        user1 = new User("a", "aUser","aUser");
-        user2 = new User("b", "bUser","bUser");
-        user3 = new User("c", "cUser","cUser");
+        user1 = new User("a", "aUser","aUser", Level.BASIC, 1, 0);
+        user2 = new User("b", "bUser","bUser", Level.SILVER, 55, 10);
+        user3 = new User("c", "cUser","cUser", Level.GOLD, 100, 4);
     }
 
     @Test
@@ -99,6 +99,11 @@ class UserDaoTest {
 
     private void checkSameUser(User user1, User user2) {
         assertEquals(user1.getId(), user2.getId());
+        assertEquals(user1.getName(), user2.getName());
+        assertEquals(user1.getPassword(), user2.getPassword());
+        assertEquals(user1.getLevel(), user2.getLevel());
+        assertEquals(user1.getLogin(), user2.getLogin());
+        assertEquals(user1.getRecommend(), user2.getRecommend());
     }
 
     @Test
