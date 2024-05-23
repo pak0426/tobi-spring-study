@@ -39,7 +39,7 @@ JDBC는 자바 표준 JDK에서도 가장 많이 사용되는 기능 중의 하�
 
 **두 번째 문제는 바로 SQLException 이다.** DB를 사용하다가 발생할 수 있는 예외의 원인은 다양하다. 문제는 DB마다 SQL만 다른 것이 아니라 에러의 종류와 원인도 제각각이라는 점이다. 그래서 JDBC는 데이터 처리 중에 발생하는 다양한 예외를 그냥 SQLException 하나에 모두 담아버린다. JDBC API는 이 SQLException 한 가지만 던지도록 설계되어 있다. 예외가 발생한 원인은 SQLException 안에 담긴 에러 코드와 SQL 상태정보를 참조해 봐야 한다. 그런데 SQLException 의 getErrorCode() 로 가져올 수 있는 DB 에러 코드는 DB별로 모두 다르다. DB 벤더가 정의한 고유한 에러 코드를 사용하기 때문이다.
 
-앞에서 메든 add() 메서드에서는 새로운 사용자를 등록하다가 키가 중복돼서 예외가 발생하는 경우를 확인하기 위해 다음과 같은 방법을 사용했다.
+앞에서 만든 add() 메서드에서는 새로운 사용자를 등록하다가 키가 중복돼서 예외가 발생하는 경우를 확인하기 위해 다음과 같은 방법을 사용했다.
 
 ```java
 if (e.getErrorCode() == MysqlErrorNumbers.ER_DUP_ENTRY) { ... }
@@ -124,7 +124,7 @@ public interface UserDao {
 }
 ```
 
-하지만 위의 코드는 메ㅅ드 선언은 사용할 수 없다. DAO에서 사용하는 데이터 액세스 기술의 API가 예외를 던지기 때문이다. 만약 JDBC API를 사용하는 UserDao 구현 클래스 add() 메서드라면 SQLException 을 던질 것이다. 인터페이스의 메서드 선언에는 없는 예외를 구현 클래스 메서드의 throws에 넣을 수는 없다. 따라서 인터페이스 메서드도 다음과 같이 선언돼야 한다.
+하지만 위의 코드는 메서드 선언은 사용할 수 없다. DAO에서 사용하는 데이터 액세스 기술의 API가 예외를 던지기 때문이다. 만약 JDBC API를 사용하는 UserDao 구현 클래스 add() 메서드라면 SQLException 을 던질 것이다. 인터페이스의 메서드 선언에는 없는 예외를 구현 클래스 메서드의 throws에 넣을 수는 없다. 따라서 인터페이스 메서드도 다음과 같이 선언돼야 한다.
 
 ```java
 public void add(User user) throws SQLException;
@@ -238,11 +238,13 @@ class DaoFactory {
 
 이제 남은 것은 기존 UserDao 클래스의 테스트 코드다. 다음과 같은 UserDao 인스턴스 변수도 변경해야할까?
 
+```java
 class UserDaoTest {
     private UserDao userDao;
 
     // ...
 }
+```
 
 굳이 그럴 필요는 없다. DaoFactory에서 UserDao에 어떤 객체의 의존성을 주입해줄지 결정해주기 때문이다.
 
