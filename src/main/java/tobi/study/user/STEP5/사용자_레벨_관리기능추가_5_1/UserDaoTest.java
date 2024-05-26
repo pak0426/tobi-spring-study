@@ -129,4 +129,20 @@ class UserDaoTest {
             assertTrue(set.translate(null, null, sqlEx) instanceof DuplicateKeyException);
         }
     }
+
+    @Test
+    public void update() {
+        userDao.deleteAll();
+
+        userDao.add(user1);
+        user1.setName("현민박");
+        user1.setPassword("niceWeather");
+        user1.setLevel(Level.GOLD);
+        user1.setLogin(100);
+        user1.setRecommend(999);
+        userDao.update(user1);
+
+        User updatedUser1 = userDao.get(user1.getId());
+        checkSameUser(user1, updatedUser1);
+    }
 }

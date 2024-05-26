@@ -186,3 +186,29 @@ JDBC가 사용하는 SQL은 컴파일 과정에서 자동으로 검증이 되지
 ### 5.1.2 사용자 수정 기능 추가
 
 사용자 관리 비즈니스 로직에 따르면 사용자 정보는 여러 번 수정될 수 있다. 상식적으로 생각해봐도 기본키인 id를 제외한 나머지 필드는 수정될 가능성이 있다. 상식적으로 생각해봐도 기본키인 id를 제외한 나머지 필드는 수정될 가능성이 있다. 성능을 극대화하기 위해, 수정된느 필드의 종류에 따라서 수정용 DAO 메서드를 만들어야 할 때도 있다. 하지만 아직은 사용자가 정보가 단순하고 필드도 몇 개 되지 않으며 사용자 정보가 자주 변경되는 것도 아니므로 간단히 접근하자. 수정할 정보가 담긴 User 오브젝트를 전달하면 id를 참고해서 사용자를 찾아 필드 정보를 UPDATE 문을 이용해 모두 변경해주는 메서드를 하나 만들겠다.
+
+#### 수정 기능 테스트 추가
+
+만들어야 할 코드의 기능을 생각해볼 겸 아래와 같은 테스트를 작성한다.
+
+```java
+    @Test
+    public void update() {
+        userDao.deleteAll();
+        
+        userDao.add(user1);
+        user1.setName("현민박");
+        user1.setPassword("niceWeather");
+        user1.setLevel(Level.GOLD);
+        user1.setLogin(100);
+        user1.setRecommend(999);
+        userDao.update(user1);
+        
+        User updatedUser1 = userDao.get(user1.getId());
+        checkSameUser(user1, updatedUser1);
+    }
+```
+
+먼저 픽스처 오브젝트 하나를 등록한다. 그리고 id를 제외한 필드의 내용을 바꾼 뒤 update() 를 호출하낟. 이제 해당 id의 사용자 정보가 변경됐어야 한다. 다시 id로 조회해서 가져온 User 오브젝트와 수정된 픽스처 오브젝트를 비교한다.
+
+그런데 user1이라는 텍스터 픽스처는 인스턴스 변수로 만들어놓은 것인데, 이를 직접 변경해도 될까? 상관 없다. 어차피 테슽트 메서드가 실행될 때마다 UserDaoTest 오브젝트는 새로 만들어지고, setUp() 메서드도 다시 불려서 초기화되기 때문이다.
