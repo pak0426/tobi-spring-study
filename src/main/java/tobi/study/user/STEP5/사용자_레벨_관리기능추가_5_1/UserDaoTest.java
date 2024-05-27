@@ -136,7 +136,7 @@ class UserDaoTest {
 
         userDao.add(user1);
         user1.setName("현민박");
-        user1.setPassword("niceWeather");
+        user1.setPassword("goodDay");
         user1.setLevel(Level.GOLD);
         user1.setLogin(100);
         user1.setRecommend(999);

@@ -212,3 +212,38 @@ JDBC가 사용하는 SQL은 컴파일 과정에서 자동으로 검증이 되지
 먼저 픽스처 오브젝트 하나를 등록한다. 그리고 id를 제외한 필드의 내용을 바꾼 뒤 update() 를 호출하낟. 이제 해당 id의 사용자 정보가 변경됐어야 한다. 다시 id로 조회해서 가져온 User 오브젝트와 수정된 픽스처 오브젝트를 비교한다.
 
 그런데 user1이라는 텍스터 픽스처는 인스턴스 변수로 만들어놓은 것인데, 이를 직접 변경해도 될까? 상관 없다. 어차피 테슽트 메서드가 실행될 때마다 UserDaoTest 오브젝트는 새로 만들어지고, setUp() 메서드도 다시 불려서 초기화되기 때문이다.
+
+#### UserDao와 UserDaoJdbc 수정
+
+여기까지 만들고 나면 dao 변수의 타입인 UserDao 인터페이스에 update() 메서드가 없다는 컴파일 에러가 날 것이다. IDE의 자동수정 기능을 이용해 UserDao 인터페이스에 아래와 같이 update() 메서드를 추가한다.
+
+```java
+public interface UserDao {
+    // ...
+    public void update(User user1);
+}
+```
+
+UserDao 인터페이스에 update() 를 추가하고 나면 이번에 UserDaoJdbc에서 메서드를 구현하지 않았다고 에러가 날 것이다. 
+
+<img width="935" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/119efa1b-89f4-4847-8812-c2a9c0cdb7b8">
+
+UserDaoJdbc에 update()를 구현하는 코드를 작성해주자.
+
+```java
+    @Override
+    public void update(User user) {
+        jdbcTemplate.update(
+                "update users set name = ?, password = ?, LEVEL = ?, LOGIN = ?, RECOMMEND = ? where ID = ?",
+                user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend(),
+                user.getId()
+        );
+    }
+
+```
+
+이제 테스트를 돌려서 결과를 확인해보자.
+
+<img width="272" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/547af384-a21c-4bac-8f1a-c85cbf87c81e">
+
+성공했다.
