@@ -134,15 +134,20 @@ class UserDaoTest {
     public void update() {
         userDao.deleteAll();
 
-        userDao.add(user1);
+        userDao.add(user1); // 수정할 사용자
+        userDao.add(user2); // 수정하지 않을 사용자
+
         user1.setName("현민박");
         user1.setPassword("goodDay");
         user1.setLevel(Level.GOLD);
         user1.setLogin(100);
         user1.setRecommend(999);
+
         userDao.update(user1);
 
         User updatedUser1 = userDao.get(user1.getId());
         checkSameUser(user1, updatedUser1);
+        User updatedUser2 = userDao.get(user2.getId());
+        checkSameUser(user2, updatedUser2);
     }
 }

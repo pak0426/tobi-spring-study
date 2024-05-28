@@ -247,3 +247,46 @@ UserDaoJdbc에 update()를 구현하는 코드를 작성해주자.
 <img width="272" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/547af384-a21c-4bac-8f1a-c85cbf87c81e">
 
 성공했다.
+
+#### 수정 테스트 보완
+
+테스트가 성공하는 것을 봤으니 이쯤에서 만족하고 다른 작업으로 넘어가도 좋을 것 같다. 하지만 꼼꼼한 개발자라면 이 테스트에 뭔가 불만을 가지고 의심스럽게 코드를 다시 살펴봐야 할 것이다. JDBC 개발에서 리소스 반환과 같은 기본 작업을 제외하면 가장 많은 실수가 일어나는 곳은 바로 SQL 문장이다. 필드 이름이나 SQL 키워드를 잘못 넣은거라면 테스트를 돌려보면 에러가 나니 쉽게 확인할 수 있다. 하지만 update() 메서드 테스트 코드로는 검증하지 못하는 오류가 있다.
+
+바로 UPDATE 문장에서 WHERE 절을 빼먹는 경우에다. UPDATE는 WHERE가 없어도 아무런 경고 없이 정상적으로 동작하는 것처럼 보인다. 
+
+이 문제를 해결할 방법을 생각해보자.
+
+**첫 번째 방법은 JdbcTemplate의 update() 가 돌려주는 리턴 값을 확인하는 것이다.** JdbcTemplate의 update()는 UPDATE나 DELETE 같이 테이블 내용에 영향을 주는 SQL을 실행하면 영향받은 로우의 개수를 알려준다. UserDao의 add(), deleteAll(), update() 메서드의 리턴 타입을 int로 바꾸고 이 정보를 리턴하게 만들 수 있다.
+
+**두 번째 방법은 테스트를 보강해서 원하는 사용자 외의 정보는 변경되지 않았음을 직접 확인하는 것이다.** 사용자를 두 명 등록해놓고, 그 중 하나만 수정한 뒤에 수정된 사용자와 수정하지 않은 사용자의 정보를 모두 확인하면 된다.
+
+여기서는 두 번째 방법을 적용해보자.
+
+확실하게 테스트하려면 UserDao update() 메서드의 SQL 문장에서 WHERE 부분을 빼보면 된다. 그래도 기존 update() 테스트는 성공할 것이고 테스트에 결함이 있다는 증거이다.
+
+```java
+    @Test
+    public void update() {
+        userDao.deleteAll();
+
+        userDao.add(user1); // 수정할 사용자
+        userDao.add(user2); // 수정하지 않을 사용자
+
+        user1.setName("현민박");
+        user1.setPassword("goodDay");
+        user1.setLevel(Level.GOLD);
+        user1.setLogin(100);
+        user1.setRecommend(999);
+
+        userDao.update(user1);
+
+        User updatedUser1 = userDao.get(user1.getId());
+        checkSameUser(user1, updatedUser1);
+        User updatedUser2 = userDao.get(user2.getId());
+        checkSameUser(user2, updatedUser2);
+    }
+```
+
+update() 메서드의 SQL에서 WHERE를 빼먹었다면 이 테스트는 실패로 끝날 것이다. 테스트가 성공하도록 WHERE 조건문을 다시 넣어주자.
+
+사용자 정보를 수정하는 기능을 추가했으니 이제 본격적인 사용자 관리 비즈니스 로직을 구현할 차례다.
