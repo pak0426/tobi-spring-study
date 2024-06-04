@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class UserDaoTest {
 
-    private UserDao userDao;
+    private tobi.study.user.STEP5.사용자_레벨_관리기능추가_5_1.UserDao userDao;
     private User user1;
     private User user2;
     private User user3;

@@ -290,3 +290,54 @@ UserDaoJdbc에 update()를 구현하는 코드를 작성해주자.
 update() 메서드의 SQL에서 WHERE를 빼먹었다면 이 테스트는 실패로 끝날 것이다. 테스트가 성공하도록 WHERE 조건문을 다시 넣어주자.
 
 사용자 정보를 수정하는 기능을 추가했으니 이제 본격적인 사용자 관리 비즈니스 로직을 구현할 차례다.
+
+### 5.1.3 UserService.upgradeLevels()
+
+레벨 관리 기능을 구현하기는 어렵지 않다. 사용자 관리 로직은 어디다 두는 것이 좋을까? UserDaoJdbc는 적당하지 않다. DAO는 데이터 어떻게 가져오고 조작할지를 다루는 곳이지 비즈니스 로직을 두는 곳이 아니다. UserService를 만들어 비즈니스 로직을 작성해보자. UserService는 UserDao 인터페이스 타입으로 userDao 빈을 DI 받아 사용하게 만든다.
+
+<img width="487" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/a06d5243-6db5-4f33-ab11-5169de33d068">
+
+#### UserService 클래스와 빈 등록
+
+```java
+public class UserService {
+    UserDao userDao;
+
+    public void setUserDao(UserDao userDao) {
+        this.userDao = userDao;
+    }
+}
+```
+
+```java
+@Configuration
+class DaoFactory {
+    @Bean
+    public DataSource dataSource() {
+        SimpleDriverDataSource dataSource = new SimpleDriverDataSource();
+
+        dataSource.setDriverClass(org.h2.Driver.class);
+        dataSource.setUrl("jdbc:h2:tcp://localhost/~/tobiSpringStudy");
+        dataSource.setUsername("sa");
+        dataSource.setPassword("");
+
+        return dataSource;
+    }
+
+    @Bean
+    public UserDao userDao() {
+        UserDaoJdbc userDaoJdbc = new UserDaoJdbc();
+        userDaoJdbc.setDataSource(dataSource());
+        return userDaoJdbc;
+    }
+
+    @Bean
+    public UserService userService() {
+        UserService userService = new UserService();
+        userService.setUserDao(userDao());
+        return userService;
+    }
+}
+```
+
+#### UserServiceTest 테스트 클래스

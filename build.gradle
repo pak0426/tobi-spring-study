@@ -27,6 +27,12 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
+sourceSets {
+    test {
+        java.srcDirs = ["src/test/tobi"]
+    }
+}
+
 tasks.named('test') {
     useJUnitPlatform()
 }
