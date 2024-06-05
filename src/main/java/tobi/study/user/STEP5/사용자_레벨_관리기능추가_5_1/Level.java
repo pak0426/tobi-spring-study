@@ -13,6 +13,15 @@ public enum Level {
         return value;
     }
 
+    public Level nextLevel() {
+        switch (this) {
+            case BASIC: return SILVER;
+            case SILVER: return GOLD;
+            case GOLD: return null;
+            default: throw new IllegalArgumentException("알 수 없는 등급");
+        }
+    }
+
     public static Level valueOf(int value) {
         switch (value) {
             case 1: return BASIC;
