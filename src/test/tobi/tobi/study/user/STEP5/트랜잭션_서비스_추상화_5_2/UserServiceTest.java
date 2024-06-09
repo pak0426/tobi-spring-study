@@ -1,0 +1,118 @@
+package tobi.study.user.STEP5.트랜잭션_서비스_추상화_5_2;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import java.util.Arrays;
+import java.util.List;
+
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
+import static tobi.study.user.STEP5.트랜잭션_서비스_추상화_5_2.UserService.MIN_LOGIN_COUNT_FOR_SILVER;
+import static tobi.study.user.STEP5.트랜잭션_서비스_추상화_5_2.UserService.MIN_RECOMMEND_COUNT_FOR_GOLD;
+
+@SpringBootTest
+class UserServiceTest {
+
+    @Autowired
+    UserService userService;
+
+    List<User> users;
+    @Autowired
+    private UserDao userDao;
+
+    @BeforeEach
+    public void setUp() {
+        users = Arrays.asList(
+                new User("a", "aUser", "1234", Level.BASIC, MIN_LOGIN_COUNT_FOR_SILVER - 1, 0),
+                new User("b", "bUser", "1234", Level.BASIC, MIN_LOGIN_COUNT_FOR_SILVER, 0),
+                new User("c", "cUser", "1234", Level.SILVER, 60, MIN_RECOMMEND_COUNT_FOR_GOLD - 1),
+                new User("d", "dUser", "1234", Level.SILVER, 60, MIN_RECOMMEND_COUNT_FOR_GOLD),
+                new User("e", "eUser", "1234", Level.GOLD, 100, Integer.MAX_VALUE)
+        );
+    }
+
+    @Test
+    public void upgradeLevels() {
+        userDao.deleteAll();
+
+        for (User user : users) {
+            userDao.add(user);
+        }
+
+        userService.upgradeLevels();
+
+        checkLevelUpgraded(users.get(0), false);
+        checkLevelUpgraded(users.get(1), true);
+        checkLevelUpgraded(users.get(2), false);
+        checkLevelUpgraded(users.get(3), true);
+        checkLevelUpgraded(users.get(4), false);
+    }
+
+    private void checkLevelUpgraded(User user, boolean upgraded) {
+        User updatedUser = userDao.get(user.getId());
+        if (upgraded) {
+            assertThat(updatedUser.getLevel()).isEqualTo(user.getLevel().nextLevel());
+        } else {
+            assertThat(updatedUser.getLevel()).isEqualTo(user.getLevel());
+        }
+    }
+
+    @Test
+    public void add() {
+        userDao.deleteAll();
+
+        User userWithLevel = users.get(4);
+        User userWithoutLevel = users.get(0);
+        userWithoutLevel.setLevel(null);
+
+        userService.add(userWithLevel);
+        userService.add(userWithoutLevel);
+
+        User userWithLevelRead = userDao.get(userWithLevel.getId());
+        User userWithoutLevelRead = userDao.get(userWithoutLevel.getId());
+
+        assertThat(userWithLevelRead.getLevel()).isEqualTo(Level.GOLD);
+        assertThat(userWithoutLevelRead.getLevel()).isEqualTo(Level.BASIC);
+    }
+
+    @Test
+    public void upgradeAllOrNoting() {
+        UserService testUserService = new TestUserService(users.get(3).getId());
+        testUserService.setUserDao(userDao); // userDao를 수동 DI한다.
+
+        userDao.deleteAll();
+
+        for (User user : users) {
+            userDao.add(user);
+        }
+
+        try {
+            testUserService.upgradeLevels();
+            fail("TestUserServiceException expected");
+        } catch (TestUserServiceException e) {
+
+        }
+
+        checkLevelUpgraded(users.get(1), false);
+    }
+
+    static class TestUserService extends UserService {
+        private String id;
+
+        private TestUserService(String id) {
+            this.id = id;
+        }
+
+        @Override
+        protected void upgradeLevel(User user) {
+            if (user.getId().equals(id)) throw new TestUserServiceException();
+            super.upgradeLevel(user);
+        }
+    }
+
+    static class TestUserServiceException extends RuntimeException {
+    }
+}
