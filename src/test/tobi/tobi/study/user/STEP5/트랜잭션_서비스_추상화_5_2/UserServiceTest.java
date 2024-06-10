@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 
@@ -16,12 +18,16 @@ import static tobi.study.user.STEP5.트랜잭션_서비스_추상화_5_2.UserSer
 @SpringBootTest
 class UserServiceTest {
 
-    @Autowired
-    UserService userService;
+    private List<User> users;
 
-    List<User> users;
+    @Autowired
+    private UserService userService;
+
     @Autowired
     private UserDao userDao;
+
+    @Autowired
+    private DataSource dataSource;
 
     @BeforeEach
     public void setUp() {
@@ -35,7 +41,7 @@ class UserServiceTest {
     }
 
     @Test
-    public void upgradeLevels() {
+    public void upgradeLevels() throws SQLException {
         userDao.deleteAll();
 
         for (User user : users) {
@@ -82,6 +88,7 @@ class UserServiceTest {
     public void upgradeAllOrNoting() {
         UserService testUserService = new TestUserService(users.get(3).getId());
         testUserService.setUserDao(userDao); // userDao를 수동 DI한다.
+        testUserService.setDataSource(dataSource);
 
         userDao.deleteAll();
 
@@ -92,7 +99,7 @@ class UserServiceTest {
         try {
             testUserService.upgradeLevels();
             fail("TestUserServiceException expected");
-        } catch (TestUserServiceException e) {
+        } catch (TestUserServiceException | SQLException e) {
 
         }
 

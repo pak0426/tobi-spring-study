@@ -152,3 +152,143 @@ UserService와 UserDao를 이런 식으로 수정하면 트랜잭션 문제는 �
 2. DAO의 메서드와 비즈니스 로직을 담고 있는 UserService의 메서드에 Connection 파라미터가 추가돼야 한다는 점이다. upgradeLevels() 에서 사용하는 메서드의 어딘가에서 DAO를 필요로 한다면, 그 사이의 모든 메서드에 걸쳐서 Connection 오브젝트가 계속 전달돼야 한다. UserService는 스프링 빈으로 선언해서 싱글톤으로 되어 있으니 UserService의 인스턴스 변수에 이 Connection을 저장해뒀다가 다른 메서드에서 사용하게 할 수도 없다.
 3. Connection 파라미터가 UserDao 인터페이스 메서드에 추가되면 UserDao는 더 이상 데이터 액세스 기술에 독립적일 수가 없다는 점이다. JPA나 하이버네티으로 UserDao의 구현 방식을 변경하려고 하면 Connection 대신 EntityManager나 Session 오브젝트를 UserDao 메서드가 전달받도록 해야 한다. 결국 UserDao 인터페이스는 바뀔 것이고, 그에 따라 UserService 코드도 함께 수정돼야 한다.
 4. DAO 메서드에 Connection 파라미터를 받게 하면 테스트 코드에도 영향을 미친다. 지금까지 DB 커넥션을 신경쓰지 않고 테스트에서 UserDao를 사용할 수 있었는데, 이제는 테스트 코드에서 직접 Connection 오브젝트를 일일이 만들어서 DAO 메서드를 호출하도록 모두 변경해야 한다.
+
+### 5.2.3 트랜잭션 동기화
+
+비즈니스 로직을 담고 있는 UserService 메서드 안에서 트랜잭션의 경계를 설정해 관리하려면 지금까지 만들었던 정리된 코드를 포기해야 할까? 아니면, 트랜잭션 기능을 포기해야 할까?
+
+물론 둘 다 아니다. 스프링은 이 딜레마를 해결할 수 있는 멋진 방법을 제공해준다.
+
+#### Connection 파라미터 제거
+
+먼저 Connection 파라미터로 직접 전달하는 문제를 해결해보자. Connection 오브젝트를 계속 메서드의 파라미터로 전달하다가 DAO를 호출할 때 사용하게 하는 건 피하고 싶다. 이를 위해 스프링이 제안하는 방법은 독립적인 **트랜잭션 동기화** 방식이다. 트랜잭션 동기화란 UserService에서 트랜잭션을 시작하기 위해 만든 Connection 오브젝트를 특별한 저장소에 보관해두고, 이후에 호출되는 DAO의 메서드에서는 저장된 Connection을 가져다가 사용하게 하는 것이다. 정확히는 DAO가 사용하는 JdbcTemplate 이 트랜잭션 동기화 방식을 이용하도록 하는 것이다.
+
+<img width="534" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/dc7c9e65-4df5-44cc-b4c6-120ed0d4fce0">
+
+(1) Userservice는 Connection을 생성하고 (2) 이를 트랜잭션 동기화 저장소에 저장 해두고 Connection의 setAutoCommit(false)를 호출해 트랜잭션을 시작시킨 후에 본 격적으로 DAO의 기능을 이용하기 시작한다. (3) 첫 번째 update() 메소드가 호출되 고, update() 메소드 내부에서 이용하는 JdbcTemplate 메소드에서는 가장 먼저 (4) 트 랜잭션 동기화 저장소에 현재 시작된 트랜잭션을 가진 Connection 오브젝트가 존재하 는지 확인한다. (2) upgradeLevels() 메소드 시작 부분에서 저장해둔 Connection을 발 견하고 이를 가져온다. 가져온 (5) Connection을 이용해 PreparedStatement를 만들 어 수정 SQL을 실행한다. 트랜잭션 동기화 저장소에서 DB 커넥션을 가져왔을 때는 JdbcTemplate은 Connection을 닫지 않은 채로 작업을 마친다. 이렇게 해서 트랜잭션 안에서 첫 번째 DB 작업을 마쳤다. 여전히 Connection은 열려 있고 트랜잭션은 진행 중인 채로 트랜잭션 동기화 저장소에 저장되어 있다.
+(6) 두 번째 update()가 호출되면 이때도 마찬가지로 (7) 트랜잭션 동기화 저장소에서 Connection을 가져와 (8) 사용한다. (9) 마지막 update()도 (10) 같은 트랜잭션을 가진 Connection을 가져와 (11) 사용한다. 트랜잭션 내의 모든 작업이 정상적으로 끝났으면 Userservice는 이제 (12)
+Connection의 commit()을 호출해서 트랜잭션을 완료시킨다. 마지막으로 (13) 트랜잭 션 저장소가 더 이상 Connection 오브젝트를 저장해두지 않도록 이를 제거한다. 어느 작 업 중에라도 예외상황이 발생하면 UserService는 즉시 Connection의 rollback()을 호 출하고 트랜잭션을 종료할 수 있다. 물론 이때도 트랜잭션 저장소에 저장된 동기화된 Connection 오브젝트는 제거해줘야 한다. 
+
+**트랜잭션 동기화 저장소는 작업 스레드마다 독립적으로 Connection 오브젝트를 저장 하고 관리하기 때문에 다중 사용자를 처리하는 서버의 멀티스레드 환경에서도 충돌이 날 염려는 없다.** 이렇게 트랜잭션 동기화 기법을 사용하면 파라미터를 통해 일일이 Connection 오브젝트를 전달할 필요가 없어진다. 트랜잭션의 경계설정이 필요한 upgradeLevels() 에서만 Connection을 다루게 하고, 여기서 생성된 Connection과 트랜잭션을 DAO의 JdbcTemplate이 사용할 수 있도록 별도의 저장소에 동기화하는 방법을 적용하기만 하면 된다. 더 이상 로직을 담은 메소드에 Connection 타입의 파라미터가 전달될 필요도 없고, userDao의 인터페이스에도 일일이 JDBC 인터페이스인 Connection을 사용한다고 노출 할 필요가 없다.
+
+#### 트랜잭션 동기화 적용
+
+문제는 멀티스레드 환경에서도 안전한 트랜잭션 동기화 방법을 구현하는 일이 기술적으로 간단하지 않다는 점인데, 다행히도 스프링은 JdbcTemplate과 더불어 이런 트랜잭션 동기화 기능을 지원하는 간단한 유틸리티 메서드를 제공하고 있다.
+
+아래는 트랜잭션 동기화 방법을 적용한 UserService 클래스 코드다.
+```java
+private DataSource dataSource;
+
+public void setDataSource(DataSource dataSource) { this.dataSource = dataSource; }
+
+public void upgradeLevels() throws SQLException {
+    TransactionSynchronizationManager.initSynchronization(); // 트랜잭션 동기화 관리자를 이용해 동기화 작업을 초기화
+
+    // DB 커넥션을 생성하고 트랜잭션을 시작, 이후의 DAO 작업은 모두 여기서 시작한 트랜잭션 안에서 진행
+    Connection c = DataSourceUtils.getConnection(dataSource); // DB 커넥션 생성과 동기화를 함께 해주는 유틸리티 메서드
+    c.setAutoCommit(false);
+
+    try {
+        List<User> users = userDao.getAll();
+        for (User user : users) {
+            if (canUpgradeLevel(user)) {
+                upgradeLevel(user);
+            }
+        }
+        c.commit(); // 정상적으로 작업을 마치면 커밋
+    } catch (Exception e) {
+        c.rollback(); // 예외 발생시 롤백
+        throw e;
+    } finally {
+        DataSourceUtils.releaseConnection(c, dataSource); // 스프링 유틸리티 메서드를 이용해 DB 커넥션을 안전하게 닫는다.
+
+        // 동기화 작업 종료 및 정리
+        TransactionSynchronizationManager.unbindResource(this.dataSource);
+        TransactionSynchronizationManager.clearSynchronization();
+    }
+}
+```
+
+아래는 DataSource 빈에 대한 DI 설정 코드를 추가한 DaoFactory.java 코드이다.
+```java
+@Configuration
+class DaoFactory {
+    @Bean
+    public DataSource dataSource() {
+        SimpleDriverDataSource dataSource = new SimpleDriverDataSource();
+
+        dataSource.setDriverClass(org.h2.Driver.class);
+        dataSource.setUrl("jdbc:h2:tcp://localhost/~/tobiSpringStudy");
+        dataSource.setUsername("sa");
+        dataSource.setPassword("");
+
+        return dataSource;
+    }
+
+    @Bean
+    public UserDao userDao() {
+        UserDaoJdbc userDaoJdbc = new UserDaoJdbc();
+        userDaoJdbc.setDataSource(dataSource());
+        return userDaoJdbc;
+    }
+
+    @Bean
+    public UserService userService() {
+        UserService userService = new UserService();
+        userService.setUserDao(userDao());
+        userService.setDataSource(dataSource());
+        return userService;
+    }
+}
+```
+
+UserService에서 DB 커넥션을 직접 다룰 때 DataSource가 필요하므로 DataSource빈에 대한 DI 설정을 해줘야 한다.
+
+스프링이 제공하는 트랜잭션 동기화 관리 클래스는 TransactionSynchronizationManager 다. 이 클래스를 이용해 먼저 트랜잭션 동기화 작업을 초기화하도록 요청한다. 그리고 DataSourceUtils 에서 제공하는 getConnection() 메서드를 통해 DB 커넥션을 생성한다. DataSource에서 Connection을 직접 가져오지 않고, 스프링이 제공하는 유틸리티 메서드를 쓰는 이유는 이 DataSourceUtils의 getCOnnection() 메서드는 Connection 오브젝트를 생성해줄 뿐만 아니라 트랜잭션 동기화에 사용하도록 저장소에 바인딩해주기 때문이다.
+
+#### 트랜잭션 테스트 보완
+
+이제 트랜잭션이 적용됐는지 테스트를 해보자. 앞에서 만든 UserServiceTest 의 upgradeAllOrNothing() 테스트 메서드에 아래와 같이 dataSource 빈을 가져와 주입해주는 코드를 추가해야 한다. 테스트용으로 확장해서 만든 TestUserService는 UserService의 서브클래스이므로 UserService와 마찬가지로 트랜잭션 동기화에 필요한 DataSource를 DI 해줘야 하기 때문이다.
+
+```java
+    @Autowired
+    private DataSource dataSource;
+
+    // ...
+
+    @Test
+    public void upgradeAllOrNoting() {
+        UserService testUserService = new TestUserService(users.get(3).getId());
+        testUserService.setUserDao(userDao); // userDao를 수동 DI한다.
+        testUserService.setDataSource(dataSource);
+    
+        userDao.deleteAll();
+    
+        for (User user : users) {
+            userDao.add(user);
+        }
+    
+        try {
+            testUserService.upgradeLevels();
+            fail("TestUserServiceException expected");
+        } catch (TestUserServiceException | SQLException e) {
+    
+        }
+    
+        checkLevelUpgraded(users.get(1), false);
+    }
+```
+
+위 테스트를 다시 실행해보자.
+
+<img width="553" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/6365be3d-fd01-49a3-8ead-fda726fd3e6b">
+
+이번엔 테스트가 성공했다. 이제 모든 사용자의 레벨 업그레이드 작업을 완료하지 못하고 작업이 중단되면 이미 변경된 사용자의 레벨도 모두 원래 상태로 돌아갈 것이다.
+
+### JdbcTemplate과 트랜잭션 동기화
+
+한 가지 궁금한 것이 있다. JdbcTemplate의 동작방식이다. 지금까지 JdbcTemplate은 update()나 query() 같은 JDBC 작업의 템플릿 메서드를 호출하면 직접 Connection을 생성하고 종료하는 일을 모두 담당한다고 설명했다. 테스트에서 특별한 준비 없이 DAO의 메서드를 직접 사용했을 때도 제대로 동작하는 것을 보면 스스로 Connection을 생성해서 사용한다는 사실을 알 수 있다.
+
+JdbcTemplate은 만약 미리 생성돼서 트랜잭션 동기화 저장소에 등록된 DB 커넥션이나 트랜잭션이 없는 경우에는 JdbcTemplate이 직접 DB 커넥션을 만들고 트랜잭션을 시작해서 JDBC 작업을 진행한다. 반면에 upgradeLevels() 메서드에서처럼 트랜잭션 동기화를 시작해놓았다면 그때부터 실행되는 JdbcTemplate는 메서드에서는 직접 DB 커넥션을 만드는 대신 트랜잭션 동기화 저장소에 들어 있는 DB 커넥션을 가져와서 사용한다.
+
+따라서 DAO를 사용할 때 트랜잭션이 굳이 필요 없다면 바로 호출해서 사용해도 되고, DAO 외부에서 트랜잭션을 만들고 이를 관리할 필요가 있다면 미리 DB 커넥션을 생성한 다음 트랜잭션 동기화를 해주고 사용하면 된다.
