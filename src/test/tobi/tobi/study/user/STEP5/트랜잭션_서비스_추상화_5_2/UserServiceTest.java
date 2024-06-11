@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
@@ -27,7 +29,7 @@ class UserServiceTest {
     private UserDao userDao;
 
     @Autowired
-    private DataSource dataSource;
+    private PlatformTransactionManager platformTransactionManager;
 
     @BeforeEach
     public void setUp() {
@@ -88,7 +90,7 @@ class UserServiceTest {
     public void upgradeAllOrNoting() {
         UserService testUserService = new TestUserService(users.get(3).getId());
         testUserService.setUserDao(userDao); // userDao를 수동 DI한다.
-        testUserService.setDataSource(dataSource);
+        testUserService.setTransactionManager(platformTransactionManager);
 
         userDao.deleteAll();
 

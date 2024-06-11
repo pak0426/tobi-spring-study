@@ -292,3 +292,306 @@ UserService에서 DB 커넥션을 직접 다룰 때 DataSource가 필요하므�
 JdbcTemplate은 만약 미리 생성돼서 트랜잭션 동기화 저장소에 등록된 DB 커넥션이나 트랜잭션이 없는 경우에는 JdbcTemplate이 직접 DB 커넥션을 만들고 트랜잭션을 시작해서 JDBC 작업을 진행한다. 반면에 upgradeLevels() 메서드에서처럼 트랜잭션 동기화를 시작해놓았다면 그때부터 실행되는 JdbcTemplate는 메서드에서는 직접 DB 커넥션을 만드는 대신 트랜잭션 동기화 저장소에 들어 있는 DB 커넥션을 가져와서 사용한다.
 
 따라서 DAO를 사용할 때 트랜잭션이 굳이 필요 없다면 바로 호출해서 사용해도 되고, DAO 외부에서 트랜잭션을 만들고 이를 관리할 필요가 있다면 미리 DB 커넥션을 생성한 다음 트랜잭션 동기화를 해주고 사용하면 된다.
+
+### 5.2.4 트랜잭션 서비스 추상화
+
+#### 기술과 환경에 종속되는 트랜잭션 경계설정 코드
+
+지금까지 만든 코드는 업체별 DB 연결 방법은 자유롭게 바꿔서 사용할 수 있다. DB 연결 방법이 바뀌어도 UserDao나 UserService 코드는 수정하지 않아도 된다. DataSource 인터페이스와 DI를 적용한 덕분이다.
+
+하지만 트랜잭션 처리 코드를 담은 UserService에서 문제가 발생했다. 하나의 트랜잭션 안에서 여러 개의 DB에 데이터를 넣는 작업을 해야 할 필요가 발생한다면, **한 개 이상의 DB로의 작업을 하나의 트랜잭션으로 만드는 건 JDBC의 Connection을 이용한 트랜잭션 방식인 로컬 트랜잭션으로는 불가능하다.** 왜냐하면 로컬 트랜잭션은 하나의 DB Connection 에 종속되기 때문이다. 따라서 **별도의 트랜잭션 관리자를 통해 트랜잭션을 관리하는 글로벌 트랜잭션 방식을 사용해야 한다.**
+
+자바는 JDBC 외의 이런 글로벌 트랜잭션을 지원하는 트랜잭션 매니저를 지원하기 위한 API인 JTA(Java Transaction API)를 제공하고 있다.
+
+아래 그림은 JTA를 이용해 여러 개의 DB 또는 메시징 서버에 대한 트랜잭션을 관리하는 방법을 보여준다. 애플리케이션은 기존 방법대로 DB는 JDBC, 메시징 서버라면 JMS 같은 API를 사용해서 필요한 작업을 수행한다. 
+
+**단, 트랜잭션은 JDBC나 JMS API를 사용해서 직접 제어하지 않고 JTA를 통해 트랜잭션 매니저가 관리하도록 위임한다.** 트랜잭션 매니저는 DB와 메시징 서버를 제어하고 관리하는 각각의 리소스 매니저와 XA 프로토콜을 통해 연결된다. 이를 통해 트랜잭션 매니저가 실제 DB와 메시징 서버의 트랜잭션을 종합적으로 제어할 수 있게 되는 것이다. 이렇게 JTA를 이용해 트랜잭션 매니저를 활용하면 여러 개의 DB나 메시징 서버에 대한 작업을 하나의 트랜잭션으로 통합하는 분산 트랜잭션 또는 글로벌 트랜잭션이 가능해진다.  
+
+<img width="551" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/48ed8044-8891-45da-94ee-5fc5c8185efa">
+
+JTA를 이용한 트랜잭션 처리 코드의 전형적인 구조는 아래와 같다.
+
+```java
+// JNDI를 이용해 서버의 UserTransaction 오브젝트를 가져온다.
+InitialContext ctx = new InitialContext();
+UserTransaction tx = (UserTransaction) ctx.lookup(USER_TX_JNDI_NAME);
+
+tx.begin();
+Connection connection = dataSource.getConnection(); // JNDI로 가져온 dataSource를 사용해야 한다.
+try{
+    tx.commit; // 데이터 액세스 코드        
+} catch (Exception e) {
+    tx.rollback();
+    throw e;
+} finally {
+    c.close();
+}
+
+
+```
+
+JTA를 이용한 방법으로 바뀌어도 트랜잭션 경계설정을 위한 구조는 JDBC를 사용했을 때와 비슷하다. 문제는 어떤 고객을 위해선 JDBC를 이용한 트랜잭션 관리 코드를, 어떤 회사는 다중 DB를 위한 글로벌 트랜잭션을 필요로 하는 곳을 위해서는 JTA를 이용한 트랜잭션 관리 코드를 적용해야 한다는 문제가 생긴다.
+
+만약 또 어떤 회사는 하이버네이트를 이용해 UserDao를 직접구현했다고 한다면 그 회사를 위해 하이버네이트의 Session과 Transaction 오브젝트를 사용하는 트랜잭션 경계설정 코드로 변경할 수 밖에 없다.
+
+#### 트랜잭션 API의 의존관계 문제와 해결책
+
+UserService에서 트랜잭션 경계설정을 하느라 다시 특정 데이터 액세스 기술에 종속되는 구조가 되고 말았다. 아래 그림과 같이 된 것이다.
+
+<img width="487" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/3561578f-0f13-4200-99e8-6179e01f043b">
+
+UserService의 코드가 특정 트랜잭션 방법에 의존적이지 않고 독립적일 수 있게 만드려면 어떻게 해야할까? 트랜잭션 경계설정 코드를 제거할 수는 없다. 다행히도 트랜잭션 경계설정 코드는 일정한 패턴을 갖는 구조로 되어 있다. 그렇다면 **여러 기술의 사용 방법에 공통점이 있다면 추상화를 생각해볼 수 있다.** 추상화란 하위 시스템의 공통점을 뽑아내서 분리시키는 것을 말한다.
+
+### 스프링의 트랜잭션 서비스 추상화
+
+스프링은 트랜잭션 기술의 공통점을 담은 트랜잭션 추상화 기술을 제공한다.
+
+<img width="498" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/13c43d92-b498-44af-80ed-024b827c921a">
+
+스프링에서 제공하는 트랜잭션 추상화 방법을 코드로 적용하면 아래와 같다.
+
+```java
+    public void upgradeLevels() throws SQLException {
+        // JDBC 트랜잭션 추상 오브젝트 생성
+        PlatformTransactionManager transactionManager = new DataSourceTransactionManager(dataSource);
+
+        // 트랜잭션 시작
+        TransactionStatus status = transactionManager.getTransaction(new DefaultTransactionDefinition());
+        try {
+            // 트랜잭션 안에서 진행되는 작업
+            List<User> users = userDao.getAll();
+            for (User user : users) {
+                if (canUpgradeLevel(user)) {
+                    upgradeLevel(user);
+                }
+            }
+            transactionManager.commit(status);
+        } catch (Exception e) {
+            transactionManager.rollback(status);
+            throw e;
+        }
+    }
+```
+
+스프링이 제공하는 트랜잭션 경계설정을 위한 추상 인터페이스는 PlatformTransactionManager 다. JDBC 로컬 트랜잭션을 이용한다면 PlatformTransactionManager 를 구현한 DataSourceTransactionManager 를 사용하면 된다.
+
+트랜잭션 추상화 적용을 마쳤으니 테스트를 다시 돌려보자. 테스트가 모두 성공적적으로 끝날 것이다.
+
+#### 트랜잭션 분리 기술
+
+트랜잭션 추상화 API를 적용한 코드를 JTA를 이용한 글로벌 트랜잭션으로 변경하려면 어떻게 해야 할까? PlatformTransactionManager 를 구현한 JTATransactionManager 를 사용하면 된다. JTA로 바꾸려면 upgradeLevels() 메서드의 첫 줄을 다음과 같이 수정해주면 된다.
+
+```java
+PlatformTransactionManager txManager = new JtaTransactionManager();
+```
+만약에 하이버네이트로 구현했다면 `HibernateTransactionManager`를 JPA를 적용했다면 `JPATransactionManager`를 사용하면 된다. 모두 PlatformTransactionManager 인터페이스를 구현한 구현 클래스이므로 트랜잭션 경계설정을 위한 getTransaction(), commit(), rollback() 메서드를 사용한 코드를 건드릴 필요가 없다.
+
+**하지만 어떤 트랜잭션 매니저 구현 클래스를 사용할지 UserService 코드가 알고 있는 것은 DI 원칙에 위배된다. 자신이 사용할 구체적인 클래스를 스스로 결정하고 생성하지 말고 컨테이너를 통해 외부에서 제공받게 하는 스프링의 DI 방식으로 바꾸자.**
+
+그렇다면 DataSourceTransactionManager 는 스프링 빈으로 등록하고 UserSerivce가 DI 방식으로 사용하게 해야 한다. **어떤 클래스든 스프링 빈으로 등록할 때 먼저 검토해야 할 것은 여러 스레드에서 동시에 사용해도 괜찮은가 하는 점이다.** 상태를 갖고 있고, 멀티스레드 환경에서 안전하지 않은 클래스를 빈으로 무작정 등록하면 심각한 문제가 생기기 때문이다. 스프링이 제공하는 `PlatformTransactionManager`의 구현 클래스는 싱글톤으로 사용이 가능하다.
+
+코드를 수정하면 아래와 같다.
+
+```java
+public class UserService {
+    private UserDao userDao;
+    private PlatformTransactionManager transactionManager;
+
+    public static final int MIN_LOGIN_COUNT_FOR_SILVER = 50;
+    public static final int MIN_RECOMMEND_COUNT_FOR_GOLD = 30;
+
+    public void setUserDao(UserDao userDao) {
+        this.userDao = userDao;
+    }
+    public void setTransactionManager(PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+
+    public void upgradeLevels() throws SQLException {
+        // 트랜잭션 시작
+        TransactionStatus status = transactionManager.getTransaction(new DefaultTransactionDefinition());
+        try {
+            // 트랜잭션 안에서 진행되는 작업
+            List<User> users = userDao.getAll();
+            for (User user : users) {
+                if (canUpgradeLevel(user)) {
+                    upgradeLevel(user);
+                }
+            }
+            transactionManager.commit(status);
+        } catch (Exception e) {
+            transactionManager.rollback(status);
+            throw e;
+        }
+    }
+
+    public void add(User user) {
+        if (user.getLevel() == null) {
+            user.setLevel(Level.BASIC);
+        }
+        userDao.add(user);
+    }
+
+    private boolean canUpgradeLevel(User user) {
+        Level level = user.getLevel();
+        switch (level) {
+            case BASIC: return (user.getLogin() >= MIN_LOGIN_COUNT_FOR_SILVER);
+            case SILVER: return (user.getRecommend() >= MIN_RECOMMEND_COUNT_FOR_GOLD);
+            case GOLD: return false;
+            default: throw new IllegalArgumentException("Unknown level: " + level);
+        }
+    }
+
+    protected void upgradeLevel(User user) {
+        user.upgradeLevel();
+        userDao.update(user);
+    }
+}
+```
+
+```java
+@Configuration
+class DaoFactory {
+    @Bean
+    public DataSource dataSource() {
+        SimpleDriverDataSource dataSource = new SimpleDriverDataSource();
+
+        dataSource.setDriverClass(org.h2.Driver.class);
+        dataSource.setUrl("jdbc:h2:tcp://localhost/~/tobiSpringStudy");
+        dataSource.setUsername("sa");
+        dataSource.setPassword("");
+
+        return dataSource;
+    }
+
+    @Bean
+    public UserDao userDao() {
+        UserDaoJdbc userDaoJdbc = new UserDaoJdbc();
+        userDaoJdbc.setDataSource(dataSource());
+        return userDaoJdbc;
+    }
+
+    @Bean
+    public UserService userService() {
+        UserService userService = new UserService();
+        userService.setUserDao(userDao());
+        userService.setTransactionManager(new DataSourceTransactionManager(dataSource()));
+        return userService;
+    }
+}
+```
+
+```java
+@SpringBootTest
+class UserServiceTest {
+
+    private List<User> users;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private UserDao userDao;
+
+    @Autowired
+    private PlatformTransactionManager platformTransactionManager;
+
+    @BeforeEach
+    public void setUp() {
+        users = Arrays.asList(
+                new User("a", "aUser", "1234", Level.BASIC, MIN_LOGIN_COUNT_FOR_SILVER - 1, 0),
+                new User("b", "bUser", "1234", Level.BASIC, MIN_LOGIN_COUNT_FOR_SILVER, 0),
+                new User("c", "cUser", "1234", Level.SILVER, 60, MIN_RECOMMEND_COUNT_FOR_GOLD - 1),
+                new User("d", "dUser", "1234", Level.SILVER, 60, MIN_RECOMMEND_COUNT_FOR_GOLD),
+                new User("e", "eUser", "1234", Level.GOLD, 100, Integer.MAX_VALUE)
+        );
+    }
+
+    @Test
+    public void upgradeLevels() throws SQLException {
+        userDao.deleteAll();
+
+        for (User user : users) {
+            userDao.add(user);
+        }
+
+        userService.upgradeLevels();
+
+        checkLevelUpgraded(users.get(0), false);
+        checkLevelUpgraded(users.get(1), true);
+        checkLevelUpgraded(users.get(2), false);
+        checkLevelUpgraded(users.get(3), true);
+        checkLevelUpgraded(users.get(4), false);
+    }
+
+    private void checkLevelUpgraded(User user, boolean upgraded) {
+        User updatedUser = userDao.get(user.getId());
+        if (upgraded) {
+            assertThat(updatedUser.getLevel()).isEqualTo(user.getLevel().nextLevel());
+        } else {
+            assertThat(updatedUser.getLevel()).isEqualTo(user.getLevel());
+        }
+    }
+
+    @Test
+    public void add() {
+        userDao.deleteAll();
+
+        User userWithLevel = users.get(4);
+        User userWithoutLevel = users.get(0);
+        userWithoutLevel.setLevel(null);
+
+        userService.add(userWithLevel);
+        userService.add(userWithoutLevel);
+
+        User userWithLevelRead = userDao.get(userWithLevel.getId());
+        User userWithoutLevelRead = userDao.get(userWithoutLevel.getId());
+
+        assertThat(userWithLevelRead.getLevel()).isEqualTo(Level.GOLD);
+        assertThat(userWithoutLevelRead.getLevel()).isEqualTo(Level.BASIC);
+    }
+
+    @Test
+    public void upgradeAllOrNoting() {
+        UserService testUserService = new TestUserService(users.get(3).getId());
+        testUserService.setUserDao(userDao); // userDao를 수동 DI한다.
+        testUserService.setTransactionManager(platformTransactionManager);
+
+        userDao.deleteAll();
+
+        for (User user : users) {
+            userDao.add(user);
+        }
+
+        try {
+            testUserService.upgradeLevels();
+            fail("TestUserServiceException expected");
+        } catch (TestUserServiceException | SQLException e) {
+
+        }
+
+        checkLevelUpgraded(users.get(1), false);
+    }
+
+    static class TestUserService extends UserService {
+        private String id;
+
+        private TestUserService(String id) {
+            this.id = id;
+        }
+
+        @Override
+        protected void upgradeLevel(User user) {
+            if (user.getId().equals(id)) throw new TestUserServiceException();
+            super.upgradeLevel(user);
+        }
+    }
+
+    static class TestUserServiceException extends RuntimeException {
+    }
+}
+```
+
+이대로 테스트를 실행해보면 모두 성공하는 것을 확인할 수 있다.
+
+<img width="241" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/e00e52b4-da5c-4780-ba35-5306a04612e1">

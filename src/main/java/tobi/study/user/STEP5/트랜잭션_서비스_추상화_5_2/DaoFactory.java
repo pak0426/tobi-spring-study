@@ -2,6 +2,7 @@ package tobi.study.user.STEP5.트랜잭션_서비스_추상화_5_2;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 
 import javax.sql.DataSource;
@@ -31,7 +32,7 @@ class DaoFactory {
     public UserService userService() {
         UserService userService = new UserService();
         userService.setUserDao(userDao());
-        userService.setDataSource(dataSource());
+        userService.setTransactionManager(new DataSourceTransactionManager(dataSource()));
         return userService;
     }
 }
