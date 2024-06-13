@@ -23,6 +23,9 @@ dependencies {
     implementation 'org.junit.jupiter:junit-jupiter-engine'
     implementation 'org.junit.jupiter:junit-jupiter-api'
 
+    implementation 'javax.mail:javax.mail-api:1.6.2'
+    implementation 'com.sun.mail:javax.mail:1.6.2'
+
     runtimeOnly 'com.h2database:h2'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
