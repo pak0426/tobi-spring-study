@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mail.MailSender;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import java.sql.SQLException;
@@ -27,6 +28,9 @@ class UserServiceTest {
 
     @Autowired
     private PlatformTransactionManager platformTransactionManager;
+
+    @Autowired
+    private MailSender mailSender;
 
     @BeforeEach
     public void setUp() {
@@ -88,6 +92,7 @@ class UserServiceTest {
         UserService testUserService = new TestUserService(users.get(3).getId());
         testUserService.setUserDao(userDao); // userDao를 수동 DI한다.
         testUserService.setTransactionManager(platformTransactionManager);
+        testUserService.setMailSender(mailSender);
 
         userDao.deleteAll();
 

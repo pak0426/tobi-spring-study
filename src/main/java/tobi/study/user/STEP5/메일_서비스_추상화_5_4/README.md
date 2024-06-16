@@ -81,3 +81,133 @@ JavaMail은 자바의 표준 기술이고 이미 수많은 시스템에 사용�
 
 <img width="479" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/fc748827-c49d-4b18-8444-569c59391d56">
 
+### 5.4.3 테스트를 위한 서비스 추상화
+
+#### JavaMail을 이용한 테스트의 문제점
+
+JavaMail의 핵심 API에는 DataSource처럼 인터페이스로 만들어져서 구현을 바꿀 수 있는게 없다.
+
+메일 발송을 위해 가장 먼저 생성해야 하는 javax.mail.Session 클래스의 사용방법을 살펴보자.
+
+```java
+Session s = Session.getInstance(props, null);
+```
+
+하지만 이 Session은 인터페이스가 아니고 클래스다. 생성자 모두 private 으로 되어 있어 직접 생성도 불가능하다. JavaMail 처럼 테스트하기 힘든 구조인 API를 테스트하기 좋게 만드는 방법이 있다. 트랜잭션을 적용하면서 살펴봤던 서비스 추상화를 적용하면 된다. 스프링은 JavaMail을 사용해 만든 코드는 손쉽게 테스트하기 힘들다는 문제를 해결하기 위해서 JavaMail에 대한 추상화 기능을 제공하고 있다. 아래는 스프링이 제공하는 메일 서비스 추상화의 핵심 인터페이스다.
+
+```java
+public interface MailSender {
+    void send(SimpleMailMessage simpleMessae) throws MailException;
+    void send(SimpleMailMessage[] simpleMessages) throws MailException;
+} 
+```
+
+이 인터페이스는 SimpleMailMessage라는 인터페이스를 구현한 클래스에 담긴 메일 메시지를 전송하는 메서드로만 구성되어 있다. 기본적으로 JavaMail을 사용해 메일 발송 기능을 제공하는 JavaMailSenderImpl 클래스를 이용하면 된다. 아래는 스프링이 제공하는 JavaMailSender 구현 클래스를 사용해서 만든 메일 발송용 코드다.
+
+```java
+    private void sendUpgradeEmail(User user) {
+        JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+        mailSender.setHost("mail.server.com");
+
+        SimpleMailMessage mailMessage = new SimpleMailMessage();
+        mailMessage.setTo(user.getEmail());
+        mailMessage.setFrom("useradmin@ksug.org");
+        mailMessage.setSubject("upgrade 안내");
+        mailMessage.setText("사용자님의 등급이 " + user.getLevel().name());
+
+        mailSender.send(mailMessage);
+    }
+```
+
+- 지저분한 try/catch 블록이 사라졌다.
+- JavaMailSender 인터페이스를 구현한 JavaMailSenderImpl의 오브젝트를 만들어서 사용했다.
+
+하지만 이 코드는 테스트용 오브젝트를 대체할 수 없다. JavaMailSenderImpl 클래스를 코드에서 직접 사용하기 때문이다. 따라서 스프링의 DI를 적용해보자.
+
+```java
+public class UserService {
+    // ...
+    
+    private MailSender mailSender;
+    
+    // ...
+
+    public void setMailSender(MailSender mailSender) {
+        this.mailSender = mailSender;
+    }
+    
+    // ...
+
+    private void sendUpgradeEmail(User user) {
+        JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+        mailSender.setHost("mail.server.com");
+
+        SimpleMailMessage mailMessage = new SimpleMailMessage();
+        mailMessage.setTo(user.getEmail());
+        mailMessage.setFrom("useradmin@ksug.org");
+        mailMessage.setSubject("upgrade 안내");
+        mailMessage.setText("사용자님의 등급이 " + user.getLevel().name());
+
+        this.mailSender.send(mailMessage);
+    }
+}
+```
+
+```java
+@Bean
+public JavaMailSenderImpl mailSender() {
+    JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+    mailSender.setHost("mail.server.com");
+    return mailSender;
+}
+
+@Bean
+public UserService userService() {
+    UserService userService = new UserService();
+    userService.setUserDao(userDao());
+    userService.setTransactionManager(new DataSourceTransactionManager(dataSource()));
+    userService.setMailSender(mailSender());
+    return userService;
+}
+```
+
+이제 테스트를 실행하면 JavaMail API를 직접 사용했을 때와 동일하게 지정된 메일 서버로 메일이 발송된다. 우리가 원하는 건 JavaMail을 사용하지 않고, 메일 발송 기능이 포함된 코드를 테스트하는 것이다. 이를 위해 메일 전송 기능을 추상화해서 인터페이스를 적용하고 DI를 통해 빈으로 분리해놨으니 모든 준비가 끝났다. 스프링이 제공한 메일 전송 기능에 대한 인터페이스가 있으니 메일 전송 클래스를 만들어 보자. 
+
+```java
+public class DummyMailSender implements MailSender {
+    @Override
+    public void send(SimpleMailMessage... simpleMessages) throws MailException {
+        
+    }
+}
+```
+
+DummyMailSender 는 MailSender 인터페이스를 구현했을 뿐, 하는 일이 없다. 다음은 테스트 설정파일의 mailSender 빈 클래스를 다음과 같이 DummyMailSender로 변경한다.
+
+```java
+    @Bean
+    public DummyMailSender mailSender() {
+        DummyMailSender mailSender = new DummyMailSender();
+        return mailSender;
+    }
+```
+
+```java
+@SpringBootTest
+class UserServiceTest {
+    @Autowired
+    private MailSender mailSender;
+    
+    // ...
+
+    @Test
+    public void upgradeAllOrNoting() {
+        // ...
+        testUserService.setMailSender(mailSender);
+        
+        // ...
+    }
+}
+```
+
+이렇게 하고 UserServiceTest 테스트는 모두 성공으로 끝난다.
