@@ -231,3 +231,106 @@ class UserServiceTest {
 2. MailSender를 확장해 메일 전송에 트랜잭션 개념을 적용하는 것이다.
 
 JavaMail처럼 확장이 불가능하게 설계해놓은 API를 사용해야 하는 경우라면 추상화 계층의 도입을 적극 고려해볼 필요가 있다. 특별히 외부의 리소스와 연동하는 대부분 작업은 추상화의 대상이 될 수 있다.
+
+### 5.4.4 테스트 대역
+
+DummyMailSender 클래스는 아무것도 하는 일이 없다. 하지만 이 클래스를 이용해 JavaMail로 메일을 직접 발송하는 클래스를 대치하지 않았으면 테스트는 매우 불편해지고 자주 실행하기 힘들었을 것이다.
+
+스프링의 설정파일을 테스트용으로 만든 이유는 개발자 환경에서 쉽게 이용할 수 있는 테스트용 DB를 사용하도록 만들기 위해서다. 이처럼 테스트 환경에서 유용하게 사용하는 기법이 있다. 대부분 테스트할 대상이 의존하고 있는 오브젝트를 DI를 통해 바꿔치기 하는 것이다.
+
+#### 의존 오브젝트의 변경을 통한 테스트 방법
+
+아래 그림은 테스트가 진행될 때의 상황을 나타낸다.
+
+<img width="452" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/ff3fc502-ea92-41ba-97d2-9ff0608b58ac">
+
+아래 그림은 테스트 중에 메일 전송 기능을 이용하는 구조를 나타낸 것이다.
+
+<img width="459" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/da9e96d6-d5cc-4680-894c-17da0589d5c8">
+
+위 두 가지 경우에서 볼 수 있듯, 테스트 대상이 되는 오브젝트가 또 다른 오브젝트에 의존하는 일은 매우 흔하다.
+
+스프링의 DI는 실전에서 사용할 오브젝트를 고체하지 않더라도, 단지 테스트만을 위해서도 유용하다. 운영 중인 시스템에서 DataSource 외에는 절대 다른 것을 사용하지 않는다고 100% 확신하더라도, 테스트 때는 바꿀 수 밖에 없기 때문이다. 그래서 DataSource 라는 인터페이스를 사용하고, 어떤 클래스의 오브젝트를 사용할지 외부에서 주입하도록 스프링의 DI를 적용해야 한다.
+
+#### 테스트 대역의 종류와 특징
+
+테스트용으로 사용되는 특별한 오브젝트들이 있다. 대부분 테스트 대상인 오브젝트의 의존 오브젝트가 되는 것들이다.  
+이렇게 테스트 환경을 만들어주기 위해, 테스트 대상이 되는 오브젝트의 기능에만 충실하게 수행하면서 빠르게, 자주 테스트를 실행할 수 있도록 사용하는 이런 오브젝트를 통틀어서 **테스트 대역(Test Double)**이라고 부른다.
+
+대표저인 테스트 대역은 **테스트 스텁(Test Stub)**이다. 테스트 스텁은 테스트 대상 오브젝트의 의존객체로서 존재하면서 테스트 동안에 코드가 정상적으로 수행할 수 있도록 돕는 것을 말한다. 일반적으로 테스트 스텁은 코드 내부에서 간접적으로 사용된다. 따라서 DI 등을 통해 미리 의존 오브젝트를 테스트 스텁으로 변경해야 한다.  
+어떤 경우는 스텁이 결과를 돌려줘야 할 때도 있다. 이럴 댄 스텁에 미리 테스트 중에 필요한 정보를 리턴해주도록 만들 수 있다. 또는 어떤 스텁은 메서드를 호출하면 강제로 예외를 발생시키게 해서 테스트 대상 오브젝트가 예외상황에서 어떻게 반응할지를 테스트할 때 적용할 수 있다.
+
+테스트 대상 오브젝트의 메서드가 돌려주는 결과뿐 아니라 테스트 오브젝트가 간접적으로 의존 오브젝트에 넘기는 값과 그 행위 자체에 대해서도 검증하고 싶다면 어떻게 해야할까?
+
+이런 경우에는 테스트의 간접적인 출력 결과를 검증하고, 테스트 대상 오브젝트와 의존 오브젝트 사이에서 일어나는 일을 검증할 수 있도록 설계된 **목 오브젝트(Mock Object)**를 사용해야 한다.
+
+<img width="446" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/acbcc4bd-bd28-4719-a002-3d915358ff7b">
+
+위 그림에서 (5)번을 제외하면 스텁이라고 봐도 된다.
+
+테스트 대상 오브젝트는 테스트로부터만 입력을 받는 것이 아니라는 점이다. 테스트가 수행되는 동안 실행되는 코드는 테스트 대상이 의존하고 있는 다른 의존 오브젝트와도 커뮤니케이션하기도 한다. 테스트 대상은 의존 오브젝트에게 값을 출력하기도 하고 값을 입력받기도 한다. 이를 위해 별도로 준비해둔 스텁 오브젝트가 메소드 호출 시 특정 값을 리턴하도록 만들어두면 된다.  
+때론 테스트 대상 오브젝트가 의존 오브젝트에게 출력한 값에 관심이 있을 경우가 있다. 또는 의존 오브젝트를 얼마나 사용했는가 하는 커뮤니케이션 행위 자체에 관심이 있을 수가 있다. 문제는 이 정보는 테스트에서는 직접 알 수가 없다는 점이다. 이때는 테스트 대상과 의존 오브젝트 사이에 주고받는 정보를 보존해두는 기능을 가진 의존 오브젝트인 목 오브젝트를 만들어서 사용해야 한다. 테스트 대상 오브젝트의 메서드 호출이 끝나고 나면 테스트는 목 오브젝트에게 테스트 대상과 목 오브젝트 사이에서 일어났던 일에 대해 확인을 요청해서, 그것을 테스트 검증 자료로 삼을 수 있다.
+
+#### 목 오브젝트를 이용한 테스트
+
+DummyMailSender 대신에 새로운 MailSender 를 대체할 클래스를 하나 만들자. 물론 메일을 발송하는 기능은 없다. UserServiceTest의 스태틱 멤버 클래스로 정의하겠다.
+
+```java
+    static class MockMailSender implements MailSender {
+        // UserService 로부터 전송 요청을 받은 메일 주소를 저장해두고 이를 읽을 수 있게 한다.
+        private List<String> requests = new ArrayList<String>();
+    
+        public List<String> getRequests() {
+            return requests;
+        }
+    
+        @Override
+        public void send(SimpleMailMessage... simpleMessages) throws MailException {
+            for (SimpleMailMessage simpleMessage : simpleMessages) {
+                requests.add(simpleMessage.getTo()[0]);
+            }
+        }
+    }
+```
+
+실제 메일을 발송하는 기능은 없다. 대신 이 클래스는 테스트 대상인 UserService가 send() 메서드를 통해 자신을 불러서 메일 전송 요청을 보냈을 때 관련 정보를 저장해두는 기능이 있다.
+
+이제 MockMailSender를 이용해 아래와 같이 upgradeLevels() 테스트 코드를 수정해서 목 오브젝트를 통해 메일 발송 여부를 검증하도록 만들 수 있다.
+
+```java
+    @Test
+    @DirtiesContext // 컨텍스트의 DI 설정을 변경하라는 테스트라는 것을 알려준다.
+    public void upgradeLevels() throws SQLException {
+        userDao.deleteAll();
+
+        for (User user : users) {
+            userDao.add(user);
+        }
+
+        // 메일 발송 결과를 테스트할 수 있도록 목 오브젝트를 만들어 userService 의 의존 오브젝트로 주입해준다.
+        MockMailSender mockMailSender = new MockMailSender();
+        userService.setMailSender(mockMailSender);
+
+
+        // 업그레이드 테스트. 메일 발송이 일어나면 MockMailSender 오브젝트의 리스트에 그 결과가 저장된다.
+        userService.upgradeLevels();
+        checkLevelUpgraded(users.get(0), false);
+        checkLevelUpgraded(users.get(1), true);
+        checkLevelUpgraded(users.get(2), false);
+        checkLevelUpgraded(users.get(3), true);
+        checkLevelUpgraded(users.get(4), false);
+
+        
+        // 목 오브젝트에 저장된 메일 수신자 목록을 가져와 업그레이드 대상과 일치하는지 확인 
+        List<String> requests = mockMailSender.getRequests();
+        assertThat(requests.size()).isEqualTo(2);
+        assertThat(requests.get(0)).isEqualTo(users.get(1).getEmail());
+        assertThat(requests.get(1)).isEqualTo(users.get(3).getEmail());
+    }
+```
+
+테스트 대상인 UserService의 메서드를 호출하기 앞서 스프링 설정을 통해 DI된 DummyMailSender를 대신해서 사용할 목 오브젝트를 수정자를 이용해 수동 DI 해준다. 그러면 UserService에서 사용하는 mailSender 는 목 오브젝트가 주입되어 우리가 설계한 대로 메일 수신자 정보를 저장할 것이다.
+
+테스트를 수행하고 결과를 확인하면 모두 성공일 것이다. 목 오브젝트 테스트라는 게, 작성하기는 간단하면서도 기능은 상당히 막강하다는 것을 알 수 있다. 보통의 테스트 방법으로는 검증하기가 매우 까다로운 테스트 대상 오브젝트의 내부에서 일어나는 일이나 다른 오브젝트 사이에서 주고받는 정보까지 검증하는 일이 손쉽기 때문이다.
+
+테스트가 수행될 수 있도록 의존 오브젝트에 간접적으로 입력 값을 제공해주는 스텁 오브젝트와 간접적이 출력 값까지 확인이 가능한 목 오브젝트, 이 두 가지는 테스트 대역의 가장 대표적인 방법이며 효과적인 테스트 코드를 작성하는 데 빠질 수 없는 중요한 도구이다.
