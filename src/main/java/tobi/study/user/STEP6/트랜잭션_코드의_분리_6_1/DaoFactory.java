@@ -35,8 +35,8 @@ class DaoFactory {
     }
 
     @Bean
-    public UserService userService() {
-        UserService userService = new UserService();
+    public UserServiceImpl userService() {
+        UserServiceImpl userService = new UserServiceImpl();
         userService.setUserDao(userDao());
         userService.setTransactionManager(new DataSourceTransactionManager(dataSource()));
         userService.setMailSender(mailSender());
