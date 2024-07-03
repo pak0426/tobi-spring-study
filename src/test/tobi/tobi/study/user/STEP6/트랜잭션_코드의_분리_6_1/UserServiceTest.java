@@ -10,7 +10,6 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.transaction.PlatformTransactionManager;
 
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -20,12 +19,15 @@ import static tobi.study.user.STEP6.트랜잭션_코드의_분리_6_1.UserServic
 import static tobi.study.user.STEP6.트랜잭션_코드의_분리_6_1.UserServiceImpl.MIN_RECOMMEND_COUNT_FOR_GOLD;
 
 @SpringBootTest
-class UserServiceImplTest {
+class UserServiceTest {
 
     private List<User> users;
 
     @Autowired
-    private UserServiceImpl userService;
+    private UserService userService;
+
+    @Autowired
+    private UserServiceImpl userServiceImpl;
 
     @Autowired
     private UserDao userDao;
@@ -49,7 +51,7 @@ class UserServiceImplTest {
 
     @Test
     @DirtiesContext // 컨텍스트의 DI 설정을 변경하라는 테스트라는 것을 알려준다.
-    public void upgradeLevels() throws SQLException {
+    public void upgradeLevels() throws Exception {
         userDao.deleteAll();
 
         for (User user : users) {
@@ -58,7 +60,7 @@ class UserServiceImplTest {
 
         // 메일 발송 결과를 테스트할 수 있도록 목 오브젝트를 만들어 userService 의 의존 오브젝트로 주입해준다.
         MockMailSender mockMailSender = new MockMailSender();
-        userService.setMailSender(mockMailSender);
+        userServiceImpl.setMailSender(mockMailSender);
 
 
         // 업그레이드 테스트. 메일 발송이 일어나면 MockMailSender 오브젝트의 리스트에 그 결과가 저장된다.
@@ -106,10 +108,14 @@ class UserServiceImplTest {
 
     @Test
     public void upgradeAllOrNoting() {
-        UserServiceImpl testUserService = new TestUserService(users.get(3).getId());
-        testUserService.setUserDao(userDao); // userDao를 수동 DI한다.
-        testUserService.setTransactionManager(platformTransactionManager);
+        TestUserService testUserService = new TestUserService(users.get(3).getId());
+        testUserService.setUserDao(userDao);
         testUserService.setMailSender(mailSender);
+
+        // 트랜잭션 기능을 분리한 UserServiceTx는 예외 발생용으로 수정할 필요가 없으니 그대로 사용한다.
+        UserServiceTx txUserService = new UserServiceTx();
+        txUserService.setTransactionManager(platformTransactionManager);
+        txUserService.setUserService(testUserService);
 
         userDao.deleteAll();
 
@@ -118,7 +124,7 @@ class UserServiceImplTest {
         }
 
         try {
-            testUserService.upgradeLevels();
+            txUserService.upgradeLevels();
             fail("TestUserServiceException expected");
         } catch (TestUserServiceException e) {
 

@@ -176,3 +176,119 @@ public class UserServiceTx implements UserService {
 ```
 
 PlatformTransactionManager의 프로퍼티를 추가해주고 트랜잭션을 제어할 수 있도록 추가하였다.
+
+#### 트랜잭션 적용을 위한 DI 설정
+
+이제 남은 것을 설정 파일을 수정하는 부분이다. 클라이언트가 UserService 라는 인터페이스를 통해 사용자 관리 로직을 이용하려고 할 때 먼저 트랜잭션을 담당하는 오브젝트게 사용돼서 트랜잭션에 관련된 작업을 진행해주고, 실제 사용자 관리 로직을 담은 오브젝트가 이후에 호출돼서 비즈니스 로직에 관련된 작업을 수행하도록 만든다.
+
+스프링의 DI 설정에 의해 결국 만들어질 빈 오브젝트와 그 의존관계는 아래와 같이 구성돼야 한다.
+
+<img width="681" alt="image" src="https://github.com/pak0426/pak0426/assets/59166263/ac1a3ed6-ce0a-412c-9cc9-e007db30652c">
+
+기존에 userService 빈이 의존하고 있던 transactionManager 는 userServiceTx의 빈이, userDao와 mailSender는 UserServiceImpl 빈이 각각 의존하도록 프로퍼티 정보를 분리한다.
+
+아래는 수정한 스프링 설정이다.
+
+```java
+    @Bean
+    public UserService userService() {
+        UserServiceTx userServiceTx = new UserServiceTx();
+        userServiceTx.setUserService(userServiceImpl());
+        userServiceTx.setPlatformTransactionManager(new DataSourceTransactionManager(dataSource()));
+        return userServiceTx;
+    }
+
+    @Bean
+    public UserServiceImpl userServiceImpl() {
+        UserServiceImpl userService = new UserServiceImpl();
+        userService.setUserDao(userDao());
+        userService.setMailSender(mailSender());
+        return userService;
+    }
+```
+
+이제 클라이언트는 UserServiceTx 빈을 호출해서 사용하도록 만들어야 한다. 따라서 userService 라는 대표적인 빈 아이디는 UserServiceTx 클래스로 정의된 빈에게 부여해준다. userService 빈은 UserServiceImpl 클래스로 정의되는, 아이디가 userServiceImpl 인 비을 DI 하게 만든다.
+
+#### 트랜잭션 분리에 따른 테스트 수정
+
+기본적인 분리 작업이 끝났으니 이제 테스트를 돌려봐야 하는데, 그 전에 테스트 코드에 손볼 곳이 제법 있다. 각 종 의존 오브젝트를 테스트용 DI 기법을 이용해 바꿔치기해서 사용하곤 했으니 기존의 UserService 클래스가 인터페이스와 두 개의 클래스로 분리된 만큼 테스트에서도 적합한 타입과 빈을 사용하도록 변경해야 할 것이다.
+
+먼저 스프링의 테스트용 컨텍스트에서 가져올 빈들을 생각해보자. 기존에는 UserService 클래스 타입의 빈을 @Autowired로 가져다가 사용했다. UserService는 이제 인터페이스로 바뀌었다. 하지만 @Autowired 는 기본적으로 타입이 일치하는 빈을 찾아주기 때문에 다른 문제가 발생한다. 수정한 스프링의 설정파일에는 UserService 라는 인터페이스 타입을 가진 두 개의 빈이 존재하기 때문이다. 같은 타입의 빈이 두 개라면 @Autowired 를 적용한 경우 어떤 빈을 가져올까? @Autowired 는 기본적으로 타입을 이용해 빈을 찾지만 만약 타입으로 하나의 빈을 결정할 수 없는 경우에는 필드 일므을 이용해 빈을 찾는다.
+
+따라서 UserServiceTest에 다음과 같은 userService 변수를 설정해두면 아이디가 userService인 빈이 주입될 것이다.
+
+```java
+@Autowired UserService userService;
+```
+
+그런데 UserServiceTest는 하나의 빈을 더 가져와야한다. 바로 UserServiceImpl 클래스로 정의된 빈이다. 일반적으로 UserService 기능 테스트에서는 UserService 인터페이스를 통해 결과를 확인하는 것으로 충분하다. 하지만 앞 장에서 만든 MailSender 목 오브젝트를 이용한 테스트에선느 테스트에서 직접 MailSender를 DI 해줘야 할 필요가 있었다. MailSender를 DI 해줄 대상을 구체적으로 알고 있어야 하기 때문에 UserServiceImpl 클래스의 오브젝트를 가져올 필요가 있다.
+
+```java
+@Autowired UserServiceImpl userServiceImpl;
+```
+
+다음은 upgradeLevels() 테스트 메서드다. 한 가지만 수정해주면 된다. MailSender의 목 오브젝트를 설정해주는 건 이제 UserService 인터페이스를 통해선 불가능하기 때문에 아래와 같이 별도로 가져온 userServiceImpl 빈에 해줘야 한다.
+
+```java
+    @Test
+    @DirtiesContext
+    public void upgradeLevels() throws Exception {
+        // ...
+
+        // 메일 발송 결과를 테스트할 수 있도록 목 오브젝트를 만들어 userService 의 의존 오브젝트로 주입해준다.
+        MockMailSender mockMailSender = new MockMailSender();
+        userServiceImpl.setMailSender(mockMailSender);
+
+
+        // ...
+    }
+
+```
+
+upgradeAllOrNothing() 메서드도 수정해주자.
+
+```java
+@Test
+public void upgradeAllOrNoting() {
+    TestUserService testUserService = new TestUserService(users.get(3).getId());
+    testUserService.setUserDao(userDao);
+    testUserService.setMailSender(mailSender);
+
+    // 트랜잭션 기능을 분리한 UserServiceTx는 예외 발생용으로 수정할 필요가 없으니 그대로 사용한다.
+    UserServiceTx txUserService = new UserServiceTx();
+    txUserService.setTransactionManager(platformTransactionManager);
+    txUserService.setUserService(testUserService);
+
+    userDao.deleteAll();
+
+    for (User user : users) {
+        userDao.add(user);
+    }
+
+    try {
+        txUserService.upgradeLevels();
+        fail("TestUserServiceException expected");
+    } catch (TestUserServiceException e) {
+
+    }
+
+    checkLevelUpgraded(users.get(1), false);
+}
+```
+
+트랜잭션 테스트용으로 특별히 정의한 TestUserService 클래스는 이제 UserServiceImpl 클래스를 상속하도록 바꿔주면 된다.
+
+```java
+static class TestUserService extends UserServiceImpl {
+    // ...
+}
+```
+
+테스트를 수행해보고 성공을 확인하자.
+
+#### 트랜잭션 경계설정 코드 분리의 장점
+
+트랜잭션 경계설정 코드의 분리와 DI를 통한 연결은 가장 복잡하고, 큰 개선 작업이었다. 이런 수고를 한 결과로 얻을 수 있는 장점은 무엇인가?
+
+1. 비즈니스 로직을 담당하고 있는 UserServiceImpl의 코드를 작성할 때는 트랜잭션과 같은 기술적인 내용에는 전혀 신경쓰지 않아도 된다. 트랜잭션의 적용이 필요한지도 신경 쓰지 않아도 된다. 스프링의 JDBC나 JTA 같은 로우레벨의 트랜잭션 API는 물론이고 스프링의 트랜잭션 추상화 API 조차 필요 없다. 트랜잭션은 DI를 이용해 UserServiceTx와 같은 트랜잭션 기능을 가진 오브젝트가 먼저 실행되도록 만들기만 하면 된다. 따라서 언제든지 트랜잭션을 도입할 수 있다.
+2. 비즈니스 로직에 대한 테스트를 손쉽게 만들어낼 수 있다는 것이다.
