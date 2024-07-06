@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
-@ComponentScan(basePackages = "tobi.study.user.STEP6.트랜잭션_코드의_분리_6_1")
+@ComponentScan(basePackages = "tobi.study.user.STEP6.고립된_단위테스트_6_2")
 class TobiSpringStudyApplication {
 
     public static void main(String[] args) {

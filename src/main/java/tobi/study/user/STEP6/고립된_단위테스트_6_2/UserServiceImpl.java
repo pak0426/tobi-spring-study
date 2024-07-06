@@ -10,7 +10,6 @@ import java.util.List;
 public class UserServiceImpl implements UserService {
 
     private UserDao userDao;
-    private PlatformTransactionManager transactionManager;
     private MailSender mailSender;
 
     public static final int MIN_LOGIN_COUNT_FOR_SILVER = 50;
@@ -20,9 +19,6 @@ public class UserServiceImpl implements UserService {
         this.userDao = userDao;
     }
 
-    public void setTransactionManager(PlatformTransactionManager transactionManager) {
-        this.transactionManager = transactionManager;
-    }
     public void setMailSender(MailSender mailSender) {
         this.mailSender = mailSender;
     }
