@@ -224,3 +224,54 @@ Mock으로 만든 테스트 스텁을 이용해서 테스트를 진행할 수 �
 - **단위 테스트를 만들기 복잡한 코드는 처음부터 통합 테스트를 고려한다.** 이때도 통합 테스트에 참여하는 코드 중에서 가능한 한 많은 부분을 미리 단위 테스트로 검증해두는 게 유리하다.
 - **스프링 테스트 컨텍스트 프레임워크를 이용하는 테스트는 통합 테스트다.** 가능하면 스프링의 지원 없이 직접 코드 레벨의 DI를 사용하면서 단위 테스트를 하는게 좋지만 **스프링의 설정 자체도 테스트 대상이고, 스프링을 이용해 좀 더 추상적인 레벨에서 테스트해야 할 경우도 있다.** 이럴 땐 스프링 컨텍스트 프레임워크를 이용해 통합 테스트를 작성한다.
 
+### 6.2.4 목 프레임워크
+
+단위 테스트를 만들기 위해서는 스텁이나 목 오브젝트의 사용이 필수적이다. 의존관게가 없는 단순한 클래스나 세부 로직을 검증하기 위해 메서드 단위로 테스트할 때가 아니라면, 대부분 의존 오브젝트를 필요로 하는 코드를 테스트하게 되기 때문이다.
+
+단위 테스트가 많은 장점이 있고 가장 우선시해야 할 테스트 방법인 건 사실이지만 작성이 번거롭다는 점이 문제다. 특히 목 오브젝트를 만드는 일이 가장 큰 짐이다. 다행히도, 이런 번거로운 목 오브젝트를 편리하게 작성하도록 도와주는 다양한 목 오브젝트 지원 프레임워크가 있다.
+
+#### Mockito 프레임워크
+
+그 중에서도 Mockito 라는 프레임워크는 사용하기 편리하고, 코드도 직관적이라 많은 인기를 끌고 있다. 직접 만든 목 오브젝트를 사용했던 테스트를 이 Mockito 를 이용하도록 바꿔보자.  
+Mockito 와 같은 목 프레임워크의 특징은 목 클래스를 일일일 준비해둘 필요가 없다. 간단한 메서드 호출만으로 다이내믹하게 특정 인터페이스를 구현한 테스트용 목 오브젝트를 만들 수 있다.  
+Mockito 목 오브젝트는 다음의 네 단계를 거쳐서 사용하면 된다. 두 번째와 네 번째는 각각 필요한 경우에만 사용할 수 있다.
+
+- 인터페이스를 이용해 목 오브젝트를 만든다.
+- 목 오브젝트가 리턴할 값이 있으면 이를 지정해준다. 메서드가 호출되면 예외를 강제로 던지게 만들 수 있다.
+- 테스트 대상 오브젝트에 DI 해서 목 ㅗㅇ브젝트가 테스트 중에 사용되도록 만든다.
+- 테스트 대상 오브젝트를 사용한 후에 목 오브젝트의 특정 메서드가 호출됐는지, 어떤 값을 가지고 몇 번 호출됐는지를 검증한다.
+
+특별한 기능을 가진 목 오브젝트를 만들어야 하는 경우가 아니라면 거의 대부분의 단위 테스트에서 필요한 목 오브젝트는 Mockito 를 사용하는 것으로 충분하다.
+
+```java
+    @Test
+    public void mockUpgradeLevels() {
+        UserServiceImpl userServiceImpl = new UserServiceImpl();
+
+        // 다이내믹한 목 오브젝트 생성과 메서드의 리턴 값 설정. 그리고 DI까지 3줄이면 충분하다.
+        UserDao mockUserDao = mock(UserDao.class);
+        when(mockUserDao.getAll()).thenReturn(users);
+        userServiceImpl.setUserDao(mockUserDao);
+
+        // 리턴 값이 없는 메서드를 가진 목 오브젝트는 더욱 간단하게 만들 수 있다.
+        MailSender mockMailSender = mock(MailSender.class);
+        userServiceImpl.setMailSender(mockMailSender);
+
+        userServiceImpl.upgradeLevels();
+
+        // 목 오브젝트가 제공하는 검증 기능을 통해서 어떤 메서드가 몇 번 호출됐는지, 파라미터는 무엇인지 확인할 수 있다.
+        verify(mockUserDao, times(2)).update(any(User.class)); // update 메서드가 2번 호출되었는지 확인, 그리고 그 메서드 인자로 User 클래스의 인자 어떤 것이든 넘겨졌는지 확인
+        verify(mockUserDao).update(users.get(1)); // mockUserDao.update(users.get(1)) 가 호출되었는지 확인
+        assertThat(users.get(1).getLevel()).isEqualTo(Level.SILVER);
+        verify(mockUserDao).update(users.get(3));
+        assertThat(users.get(3).getLevel()).isEqualTo(Level.GOLD);
+
+        ArgumentCaptor<SimpleMailMessage> mailMessageArg = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mockMailSender, times(2)).send(mailMessageArg.capture());
+        List<SimpleMailMessage> mailMessages = mailMessageArg.getAllValues();
+        assertThat(mailMessages.get(0).getTo()[0]).isEqualTo(users.get(1).getEmail());
+        assertThat(mailMessages.get(1).getTo()[0]).isEqualTo(users.get(3).getEmail());
+    }
+```
+
+스프링을 사용한다면 단위 테스트를 만들어야 하고, 단위 테스트를 만든다면 목 오브젝트는 자주 필요하다. 따라서 Mockito 와 같은 목 오브젝트 지원 프레임워크 하나쯤은 익숙하게 사용할 수 있도록 학습해두자.
