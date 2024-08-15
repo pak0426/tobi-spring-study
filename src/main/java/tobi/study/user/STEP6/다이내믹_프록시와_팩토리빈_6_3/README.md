@@ -381,3 +381,90 @@ InvocationHandler 는 단일 메서드에서 모든 요청을 처리하기 때�
         return ret;
     }
 ```
+
+### 6.3.3 다이내믹 프록시를 이용한 트랜잭션 부가 기능
+
+UserServiceTx 를  다이내믹 프록시 방식으로 변경해보자. UserServiceTx 는 서비스 인터페이스의 메서드를 모두 구현해야 하고 트랜잭션이 필요한 메서드마다 트랜잭션 처리코드가 중복돼서 나타나는 비효율적인 방법으로 만들어져 있다. 트랜잭션이 필요한 클래스와 메서드가 증가하면 UserServiceTx 처럼 프록시 클래스를 일일이 구현하는 것은 큰 부담이다.
+
+따라서 트랜잭션 부가기능을 제공하는 다이내믹 프록시를 만들어 적용하는 방법이 효율적이다.
+
+
+#### 트랜잭션 InvocationHandler
+
+```java
+public class TransactionHandler implements InvocationHandler {
+
+    private Object target;
+    private PlatformTransactionManager transactionManager;
+    private String pattern;
+
+    public void setTarget(Object target) {
+        this.target = target;
+    }
+
+    public void setTransactionManager(PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+
+    public void setPattern(String pattern) {
+        this.pattern = pattern;
+    }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        if (method.getName().startsWith(pattern)) {
+            return invokeTransaction(method, args);
+        }
+        return method.invoke(target, args);
+    }
+
+    private Object invokeTransaction(Method method, Object[] args) throws Throwable {
+        TransactionStatus status = this.transactionManager.getTransaction(new DefaultTransactionDefinition());
+
+        try {
+            Object ret = method.invoke(target, args);
+            this.transactionManager.commit(status);
+            return ret;
+        } catch (InvocationTargetException e) {
+            this.transactionManager.rollback(status);
+            throw e.getTargetException();
+        }
+    }
+}
+```
+
+요청을 위임할 타깃을 DI로 제공받도록 한다. 타깃을 저장할 변수는 Object 로 선언했다. 따라서 UserServiceImpl 외에 트랜잭션 적용이 필요한 어떤 타깃 오브젝트에도 적용할 수 있다.  
+UserServiceTx와 마찬가지로 트랜잭션 추상화 인터페이스인 PlatformTransactionManager 를 DI 받도록 한다. 타깃 오브젝트의 모든 메서드에 무조건 트랜잭션이 적용되지 않도록 트랜잭션을 적용할 메서드 이름의 패턴을 DI 받는다. 간단히 메서드 이름의 시작 부분을 비교할 수 있게 만들었다. pattern을 "get" 으로 주면 get으로 시작하는 모든 메서드에 트랜잭션이 적용된다.
+
+InvocationHandler 의 invoke() 메서드를 구현하는 방법은 UppercaseHandler 에 적용했던 것과 동일하다. 타깃 오브젝트의 모든 메서드에 트랜잭션을 적용하는 게 아니라 선별적으로 적용할 것이므로 적용할 대상을 선별하는 작업을 먼저 진행한다. DI 받은 이름 패턴으로 시작되는 이름을 가진 메서드인지 확인한다. 패턴과 일치하는 이름을 가진 메서드라면 트랜잭션을 적용 하는 메서드를 호출하고, 아니라면 부가기능 없이 타깃 오브젝트의 메서드를 호출해서 결과를 리턴하게 한다.
+
+트랜잭션을 적용하면서 타깃 오브젝트의 메서드를 호출하는 것은 UserServiceTx 에서와 동일하다. 한 가지 차이점은 롤백을 적용하기 위한 예외는 RumtimeException 대신에 InvocationTargetException 을 잡도록 해야 한다는 점이다. 리플렉션 메서드인 Method.invoke() 를 이용해 타깃 오브젝트의 메서드를 호출할 때는 타깃 오브젝트에서 발생하는 예외가 InvocationTargetException 으로 한 번 포장돼서 전달된다. 따라서 일단 InvocationTargetException 으로 받은 후 getTargetException() 메서드로 중첩되어 있는 예외를 가져와야 한다.
+
+#### TransactionHandler 와 다이내믹 프록시를 이용하는 테스트
+
+앞에서 만든 다이내믹 프록시에 사용되는 TransactionHandler 가 UserServiceTx 대신 할 수 있는지 확인하기 위해 테스트를 작성해보자.
+
+```java
+@Test
+    public void upgradeAllOrNoting() {
+        // ...
+
+        TransactionHandler txHandler = new TransactionHandler();
+        txHandler.setTarget(testUserService);
+        txHandler.setTransactionManager(platformTransactionManager);
+        txHandler.setPattern("upgradeLevels");
+
+        UserService txUserService = (UserService) Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class[]{ UserService.class },
+                txHandler
+        );
+
+        // ...
+    }
+```
+
+UserServiceTx 오브젝트 대신 TransactionHandler 를 만들고 타깃 오브젝트와 트랜잭션 맴니저, 메서드 패턴을 주입해준다. 이렇게 준비된 TransactionHandler 오브젝트를 이용해 UserService 타입의 다이내믹 프록시를 생성하면 모든 필요한 작업은 끝이다.
+
+upgradeAllOrNothing() 테스트를 실행해보자. 다이내믹 프록시를 이용한 트랜잭션 프록시가 적용됐으므로 테스트는 깔끔하게 성공한다.
+
