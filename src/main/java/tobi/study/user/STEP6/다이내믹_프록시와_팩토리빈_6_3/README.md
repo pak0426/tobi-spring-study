@@ -468,3 +468,103 @@ UserServiceTx 오브젝트 대신 TransactionHandler 를 만들고 타깃 오브
 
 upgradeAllOrNothing() 테스트를 실행해보자. 다이내믹 프록시를 이용한 트랜잭션 프록시가 적용됐으므로 테스트는 깔끔하게 성공한다.
 
+### 6.3.4 다이내믹 프록시를 위한 팩토리 빈
+
+이제 TransactionHandler 와 다이내믹 프록시를 스프링의 DI를 통해 사용할 수 있도록 만들어야 할 차례다.
+
+그런데 문제는 DI의 대상이 되는 다이내믹 프록시 오브젝트는 일반적인 스프링의 빈으로는 등록할 방법이 없다는 점이다. 스프링 빈은 기본적으로 클래스 이름과 프로퍼티로 정의된다. 스프링은 지정된 클래스 이름을 가지고 리플렉션을 이용해서 해당 클래스의 오브젝트를 만든다. 클래스의 이름을 갖고 있다면 다음과 같은 방법으로 새로운 오브젝트를 생성할 수 있다. Class의 newInstance() 메서드는 해당 클래스의 파라미터가 없는 생성자를 호출하고, 그 결과 생성되는 오브젝트를 돌려주는 리플렉션 API다.
+
+```java
+Date now = (Date) Class.forName("java.util.Date").newInstance();
+```
+
+스프링은 내부적으로 리플렉션 API를 이용해 빈 정의에 나오는 클래스 이름을 가지고 빈 오브젝트를 생성한다. 문제는 다이내믹 프록시 오브젝트는 이런 식으로 프록시 오브젝트가 생성되지 않는다는 점이다. **사실 다이내믹 프록시 오브젝트의 클래스가 어떤 것인지 알 수도 없다. 클래스 자체도 내부적으로 다이내믹하게 새로 정의해서 사용하기 때문이다.** 따라서 사전에 프록시 오브젝트의 클래스 정보를 미리 알아내서 스프링 빈에 정의할 방법이 없다. 다이내믹 프록시는 Proxy 클래스의 newProxyInstance() 라는 스태틱 팩토리 메서드를 통해서만 만들 수 있다.
+
+#### 팩토리 빈
+
+사실 스프링은 클래스 정보를 가지고 디폴트 생성자를 통해 오브젝트를 만드는 방법 외에도 빈을 만들 수 있는 방법을 제공한다. 대표적으로 팩토리 빈을 이용한 빈 생성 방법을 들 수 있다. 팩토리 빈이란 스프링을 대신해서 오브젝트의 생성로직을 담당하도록 만들어진 특별한 빈이다.
+
+팩토리 빈을 만드는 방법에는 여러 가지가 있는데, 가장 간단한 방법은 FactoryBean 이라는 인터페이스를 구현하는 것이다. FactoryBean 인터페이스는 아래에 나와 있는 대로 세 가지 메서드로 구성되어 있다.
+
+<img width="621" alt="image" src="https://github.com/user-attachments/assets/4673792b-9b3f-4ac7-b74e-20b48d4c3db0">
+
+FactoryBean 인터페이스를 구현한 클래스를 스프링의 빈으로 등록하면 팩토리 빈으로 동작한다. 팩토리 빈의 동작 원리를 확인할 수 있도록 만들어진 학습 테스트를 살펴보자.
+
+먼저 스프링에서 빈 오브젝트로 만들어 사용하고 싶은 클래스를 하나 정의해보자. 아래 Message 클래스는 생성자를 통해 오브젝트를 만들 수 없다. 오브젝트를 만들려면 반드시 스태틱 메서드를 사용해야 한다.
+
+```java
+public class Message {
+    String text;
+
+    private Message(String text) {
+        this.text = text;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public static Message newMessage(String text) {
+        return new Message(text);
+    }
+}
+```
+
+Message 클래스의 오브젝트를 만드려면 newMessage() 라는 스태틱 메서드를 사용해야 한다. 따라서 이 클래스를 직접 스프링 빈으로 등록해서 사용할 수 없다.
+
+```xml
+<bean id="m" class=".spring.factorybean.Message">
+```
+
+위와 같이 사용할 수 없다.
+
+사실 스프링은 private 생성자를 가진 클래스도 빈으로 등록해주면 리플렉션을 이용해 오브젝트를 만들어준다. 리플렉션은 private 으로 선언된 접근 규약을 위반할 수 있는 강력한 기능이 있기 때문이다. 하지만 생성자를 private 으로 만들었다는 것은 스태틱 메서드를 통해 오브젝트가 만들어져야 하는 중요한 이유가 있기 때문이므로 이를 무시하고 오브젝트를 강제로 생성하면 위험하다.  
+Message 클래스의 오브젝트를 생성해주는 팩토리 빈 클래스를 만들어보자. FactoryBean 인터페이스를 구현해서 아래와 같이 만들면 된다.
+
+```java
+public class MessageFactoryBean implements FactoryBean<Message> {
+
+    String text;
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    @Override
+    public Message getObject() throws Exception {
+        return Message.newMessage(text);
+    }
+
+    @Override
+    public Class<?> getObjectType() {
+        return Message.class;
+    }
+
+    public boolean isSingleton() {
+        return false;
+    }
+}
+```
+
+팩토리 빈은 전형적인 팩토리 메서드를 가진 오브젝트다. 스프링은 FactoryBean 인터페이스를 구현한 클래스가 빈의 클래스로 지정되면, 팩토리 빈 클래스의 오브젝트의 getObject() 메서드를 이용해 오브젝트를 가져오고, 이를 빈 오브젝트로 사용한다. 빈의 클래스로 등록된 팩토리 빈은 빈 오브젝트를 생성하는 과정에서만 사용될 뿐이다.
+
+#### 팩토리 빈의 설정 방법
+
+아래에서 볼 수 있듯이 팩토리 빈의 설정은 일반 빈과 다르지 않다. id와 class 애트리뷰트를 사용해 빈의 아이디와 클래스를 지정한다는 면에서는 차이가 없다.
+
+<img width="626" alt="image" src="https://github.com/user-attachments/assets/fce7a63a-9ef9-4ebb-bacb-e4a21ac84d2b">
+
+여타 빈 설정과 다른 점은 message 빈 오브젝트의 타입이 class 애트리뷰트에 정의된 MessageFactoryBean 이 아니라 Message 타입이라는 것이다. Message 빈의 타입은 MessageFactoryBean 의 getObjectType() aㅔ서드가 돌려주는 타입으로 결정된다. 또, getObject() 메서드가 생성해주는 오브젝트가 message 빈의 오브젝트가 된다.
+
+
+#### 다이내믹 프록시를 만들어주는 팩토리 빈
+
+Proxy 의 newProxyInstance() 메서드를 통해서만 생성이 가능한 다이내믹 프록시 오브젝트는 일반적인 방법으로는 스프링의 빈으로 등록할 수 없다. 대신 팩토리 빈을 사용하면 다이내믹 프록시 오브젝트를 스프링의 빈으로 만들어줄 수가 있다. 팩토리 빈의 getObject() 메서드에 다이내믹 프록시 오브젝트를 만들어주는 코드를 넣으면 되기 때문이다.
+
+팩토리 빈 방식을 통해 아래와 같은 구조로 빈이 만들어지고 관계가 설정되게 하려는 것이다.
+
+<img width="625" alt="image" src="https://github.com/user-attachments/assets/c2799ca2-e963-4d3a-a6eb-e8efd8898037">
+
+스프링 빈에는 팩토리 빈과 UserServiceImpl만 빈으로 등록한다. 팩토리 빈은 다이내믹 프록시가 위임할 티깃 오브젝트인 UserServiceImpl에 대한 레퍼런스를 프로퍼티를 통해 DI를 받아둬야 한다.
+
+다이내믹 프록시를 직접 만들어서 UserService에 적용했던 upgradeAllOrNothing() 테스트의 코드를 팩토리 빈을 만들어서 getObject() 안에 넣어주기만 하면 된다.
