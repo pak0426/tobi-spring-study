@@ -568,3 +568,13 @@ Proxy 의 newProxyInstance() 메서드를 통해서만 생성이 가능한 다�
 스프링 빈에는 팩토리 빈과 UserServiceImpl만 빈으로 등록한다. 팩토리 빈은 다이내믹 프록시가 위임할 티깃 오브젝트인 UserServiceImpl에 대한 레퍼런스를 프로퍼티를 통해 DI를 받아둬야 한다.
 
 다이내믹 프록시를 직접 만들어서 UserService에 적용했던 upgradeAllOrNothing() 테스트의 코드를 팩토리 빈을 만들어서 getObject() 안에 넣어주기만 하면 된다.
+
+#### 트랜잭션 프록시 팩토리 빈
+
+아래는 TransactionHandler를 이용하는 다이내믹 프록시를 생성하는 팩토리 빈 클래스다.
+
+<img width="571" alt="image" src="https://github.com/user-attachments/assets/15b376d7-cb32-4e0a-a260-76ac1178d0f1">
+
+<img width="599" alt="image" src="https://github.com/user-attachments/assets/eabb8055-7351-480d-a364-722ddbae8108">
+
+팩토리 빈이 만드는 다이내믹 프록시는 구현 인터페이스나 타깃의 종류에 제한이 없다. 따라서 UserService 외에도 트랜잭션 부가기능이 필요한 오브젝트를 위한 프록시를 만들 때 얼마든지 재사용이 가능하다.
