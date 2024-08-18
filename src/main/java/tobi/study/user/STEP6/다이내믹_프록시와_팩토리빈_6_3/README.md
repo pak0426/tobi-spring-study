@@ -578,3 +578,10 @@ Proxy 의 newProxyInstance() 메서드를 통해서만 생성이 가능한 다�
 <img width="599" alt="image" src="https://github.com/user-attachments/assets/eabb8055-7351-480d-a364-722ddbae8108">
 
 팩토리 빈이 만드는 다이내믹 프록시는 구현 인터페이스나 타깃의 종류에 제한이 없다. 따라서 UserService 외에도 트랜잭션 부가기능이 필요한 오브젝트를 위한 프록시를 만들 때 얼마든지 재사용이 가능하다.
+
+
+#### 트랜잭션 프록시 팩토리 빈 테스트
+
+UserServiceTest 테스트 중에서 add() @Autowired 로 가져온 userService 빈을 사용하기 때문에 TxProxyFactoryBean 팩토리 빈이 생성하는 다이내믹 프록시를 통해 UserService 기능을 사용하게 될 것이다. 반면에 upgradeLevels() 와 mockUpgradeLevels() 는 목 오브젝트를 이용해 비즈니스 로직에 대한 단위테스트를 만들었으니 트랜잭션과는 무관하다. 가장 중요한 트랜잭션 적용 기능을 확인하는 upgradeAllOrNothing() 의 경우는 수동 DI를 통해 직접 다이내믹 프록시를 만들어서 사용하니 팩토리 빈이 적용되지 않는다.
+
+add() 의 경우는 단순 위임 방식으로 동작한다. TxProxyFactoryBean 이 다이내믹 프록시를 기대한 대로 완벽하게 구성해주는지는 테스트를 해봐야 안다.
