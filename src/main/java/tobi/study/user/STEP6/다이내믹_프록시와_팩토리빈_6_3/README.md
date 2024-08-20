@@ -585,3 +585,32 @@ Proxy 의 newProxyInstance() 메서드를 통해서만 생성이 가능한 다�
 UserServiceTest 테스트 중에서 add() @Autowired 로 가져온 userService 빈을 사용하기 때문에 TxProxyFactoryBean 팩토리 빈이 생성하는 다이내믹 프록시를 통해 UserService 기능을 사용하게 될 것이다. 반면에 upgradeLevels() 와 mockUpgradeLevels() 는 목 오브젝트를 이용해 비즈니스 로직에 대한 단위테스트를 만들었으니 트랜잭션과는 무관하다. 가장 중요한 트랜잭션 적용 기능을 확인하는 upgradeAllOrNothing() 의 경우는 수동 DI를 통해 직접 다이내믹 프록시를 만들어서 사용하니 팩토리 빈이 적용되지 않는다.
 
 add() 의 경우는 단순 위임 방식으로 동작한다. TxProxyFactoryBean 이 다이내믹 프록시를 기대한 대로 완벽하게 구성해주는지는 테스트를 해봐야 안다.
+
+### 6.3.5 프록시 팩토리 빈 방식의 장점과 한계
+
+이쯤에서 지금까지 적용했던 방법의 장점을 정리해보고 그 한계점도 생각해보자. 다이내믹 프록시를 생성해주는 팩토리 빈을 사용하는 방법은 여러 가지 장점이 있다.  
+한번 부가기능을 가진 프록시를 생성하는 팩토리 빈을 만들어두면 타깃의 타입에 상관없이 재사용할 수 있기 때문이다.
+
+#### 프록시 팩토리 빈의 재사용
+
+TransactionHandler 를 이용하는 다이내믹  프록시를 생성해주는 TxProxyFactoryBean 은 코드의 수정 없이도 다양한 클래스에 적용할 수 있다. 타깃 오브젝트에 맞는 프로퍼티 정보를 설정해서 빈으로 등록해주기만 하면 된다. 하나 이상의 TxProxyFactoryBean 을 동시에 빈으로 등록해도 상관 없다. 팩토리 빈이기 때문에 각 빈의 타입은 타깃 인터페이스와 일치한다.  
+
+만약 트랜잭션 경계설정 기능을 부여해줄 필요가 있는 필요한 클래스가 있다고 해보자. 인터페이스는 CoreService 라고 하고 인터페이스에 정의된 수십여 개의 메서드에 트랜잭션을 모두 적용해야 한다. CoreService의 인터페이스를 구현하면서 핵심 비즈니스 로직을 담은 클래스를 CoreServiceImpl 이라고 한다면 트랜잭션을 적용하기 전에는 아래와 같이 빈으로 등록해서 사용했을 것이다.
+
+<img width="508" alt="image" src="https://github.com/user-attachments/assets/b684ef7e-2efd-4956-8161-8bf5bad94394">
+
+coreService 빈에 트랜잭션 기능이 필요해지면 UserService 에 적용하느라 만들었던 TxProxyFactoryBean 을 그대로 적용해주면 된다. 일단 기존의 coreService 라는 이름으로 등록했던 빈의 아이디를 아래와 같이 다르게 변경한다.
+
+<img width="509" alt="image" src="https://github.com/user-attachments/assets/f284c010-32ea-4d09-a009-14045b1965a4">
+
+이제 coreService 라는 아이디를 가진 빈은 TxProxyFactoryBean 을 이용해 아래와 같이 등록해준다.
+
+<img width="512" alt="image" src="https://github.com/user-attachments/assets/8c6f2dda-6928-495d-a813-d3af81bcb7c3">
+
+이제 coreService 라는 아이디를 가진 빈을 DI 받아 사용하는 클라이언트는 코드의 변경 없이도 프록시가 제공해주는 트랜잭션 기능이 적용된 CoreService 를 이용할 수 있다.
+
+아래 그림은 설정을 변경하기 전과 후의 오브젝트 관계를 나타낸다. 
+
+<img width="505" alt="image" src="https://github.com/user-attachments/assets/912fc4a2-01fc-4998-b3a0-723ba646542e">
+
+프록시 팩토리 빈을 이용하면 프록시 기법을 아주 빠르고 효과적으로 적용할 수 있다. **코드 한 줄 만들지 않고 기존 코드에 부가적인 기능을 추가해줄 수 있다는 건** 정말 매력적이다.
