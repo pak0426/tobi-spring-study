@@ -119,3 +119,41 @@ public void pointcutAdvisor() {
 이렇게 어드바이스와 포인트컷을 묶은 오브젝트를 어드바이저라고 부른다.
 
 > Advisor = Pointcut(메서드 선정 알고리즘) + Advice(부가기능)
+
+### 6.4.2 ProxyFactoryBean 적용
+
+#### TransactionAdvice
+
+부가기능을 담당하는 어드바이스는 테스트에서 만들어본 것처럼 `MethodInterceptor` 라는 `Advice` 서브인터페이스를 구현해서 만든다. 아래 코드와 같이 JDK 동적 프록시 방식으로 만든 `TransactionHandler` 의 코드에서 타깃과 메서드 선정 부분을 제거해주면 된다.
+
+```java
+public class TransactionAdvice implements MethodInterceptor { // 스프링의 어드바이스 인터페이스 구현
+    private final PlatformTransactionManager transactionManager;
+
+    public TransactionAdvice(PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+
+    // 타깃을 호출하는 기능을 가진 콜백 오브젝트를 프록시로부터 받는다.
+    // 덕분에 어드바이스는 특정 타깃에 의존하지 않고 재사용 가능하다.
+    @Override
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        TransactionStatus status = this.transactionManager.getTransaction(new DefaultTransactionDefinition());
+
+        try {
+            // 콜백을 호출해 타깃 메서드 실행. 타깃 메ㅓ드 호출 전후로 필요한 부가기능을 넣을 수 있다.
+            // 경우에 따라 타깃이 아예 호출되지 않게 하거나 재시도를 위한 반복 호출도 가능하다.
+            Object ret = invocation.proceed();
+            this.transactionManager.commit(status);
+            return ret;
+        } catch (RuntimeException e) {
+            // JDK 동적 프록시가 제공하는 Method 와는 달리 스프링의 MethodInvocation 을 통한 타깃 호출은
+            // 예외가 포장되지 않고 타깃에서 보낸 그대로 전달된다.
+            this.transactionManager.rollback(status);
+            throw e;
+        }
+    }
+}
+```
+
+JDK 동적 프록시의 `InvocationHandler` 를 이용해서 만들었을 때보다 코드가 간결하다. 리플렉션을 통한 타깃 메서드 호출 작업의 번거로움은 MethodInvocation 타입의 콜백을 이용한 덕분에 대부분 제거할 수 있다. 타깃 메서드가 던지는 예외도 InvocationTargetException으로 포장돼서 오는 것이 아니기 때문에 그대로 잡아서 처리하면 된다.
