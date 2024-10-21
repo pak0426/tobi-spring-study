@@ -1,9 +1,13 @@
 package tobi.study.user.STEP6.스프링의_프록시_팩토리_빈_6_4;
 
+import org.springframework.aop.framework.ProxyFactoryBean;
+import org.springframework.aop.support.DefaultPointcutAdvisor;
+import org.springframework.aop.support.NameMatchMethodPointcut;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 
@@ -35,11 +39,11 @@ class DaoFactory {
     }
 
     @Bean
-    public UserService userService() {
-        UserServiceTx userServiceTx = new UserServiceTx();
-        userServiceTx.setTransactionManager(new DataSourceTransactionManager(dataSource()));
-        userServiceTx.setUserService(userServiceImpl());
-        return userServiceTx;
+    public ProxyFactoryBean userService() {
+        ProxyFactoryBean proxy = new ProxyFactoryBean();
+        proxy.setTarget(userServiceImpl());
+        proxy.addAdvisor(transactionAdvisor());
+        return proxy;
     }
 
     @Bean
@@ -48,5 +52,27 @@ class DaoFactory {
         userService.setUserDao(userDao());
         userService.setMailSender(mailSender());
         return userService;
+    }
+
+    @Bean
+    public PlatformTransactionManager transactionManager() {
+        return new DataSourceTransactionManager(dataSource());
+    }
+
+    @Bean
+    public TransactionAdvice transactionAdvice() {
+        return new TransactionAdvice(transactionManager());
+    }
+
+    @Bean
+    public NameMatchMethodPointcut transactionPointcut() {
+        NameMatchMethodPointcut nameMatchMethodPointcut = new NameMatchMethodPointcut();
+        nameMatchMethodPointcut.setMappedName("upgrade*");
+        return nameMatchMethodPointcut;
+    }
+
+    @Bean
+    public DefaultPointcutAdvisor transactionAdvisor() {
+        return new DefaultPointcutAdvisor(transactionPointcut(), transactionAdvice());
     }
 }

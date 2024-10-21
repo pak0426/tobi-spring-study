@@ -157,3 +157,39 @@ public class TransactionAdvice implements MethodInterceptor { // 스프링의 �
 ```
 
 JDK 동적 프록시의 `InvocationHandler` 를 이용해서 만들었을 때보다 코드가 간결하다. 리플렉션을 통한 타깃 메서드 호출 작업의 번거로움은 MethodInvocation 타입의 콜백을 이용한 덕분에 대부분 제거할 수 있다. 타깃 메서드가 던지는 예외도 InvocationTargetException으로 포장돼서 오는 것이 아니기 때문에 그대로 잡아서 처리하면 된다.
+
+### 스프링 DI 설정
+
+```java
+@Bean
+public ProxyFactoryBean userService() {
+    ProxyFactoryBean proxy = new ProxyFactoryBean();
+    proxy.setTarget(userServiceImpl());
+    proxy.addAdvisor(transactionAdvisor());
+    return proxy;
+}
+
+@Bean
+public PlatformTransactionManager transactionManager() {
+    return new DataSourceTransactionManager(dataSource());
+}
+
+@Bean
+public TransactionAdvice transactionAdvice() {
+    return new TransactionAdvice(transactionManager());
+}
+
+@Bean
+public NameMatchMethodPointcut transactionPointcut() {
+    NameMatchMethodPointcut nameMatchMethodPointcut = new NameMatchMethodPointcut();
+    nameMatchMethodPointcut.setMappedName("upgrade*");
+    return nameMatchMethodPointcut;
+}
+
+@Bean
+public DefaultPointcutAdvisor transactionAdvisor() {
+    return new DefaultPointcutAdvisor(transactionPointcut(), transactionAdvice());
+}
+```
+
+어드바이저는 `addAdvisor()` 메서드를 통해 넣었다. 여러 개의 값을 넣을 수 있다. 만약 타깃이 모든 메서드에 적용해도 좋기 때문에 포인트컷 적용이 필요 없다면 transactionAdvice 라고 넣을 수도 있다.

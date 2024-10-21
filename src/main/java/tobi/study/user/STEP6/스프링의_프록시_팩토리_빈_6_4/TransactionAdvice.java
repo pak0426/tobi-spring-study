@@ -24,11 +24,13 @@ public class TransactionAdvice implements MethodInterceptor { // 스프링의 �
             // 경우에 따라 타깃이 아예 호출되지 않게 하거나 재시도를 위한 반복 호출도 가능하다.
             Object ret = invocation.proceed();
             this.transactionManager.commit(status);
+            System.out.println("Committing transaction");
             return ret;
         } catch (RuntimeException e) {
             // JDK 동적 프록시가 제공하는 Method 와는 달리 스프링의 MethodInvocation 을 통한 타깃 호출은
             // 예외가 포장되지 않고 타깃에서 보낸 그대로 전달된다.
             this.transactionManager.rollback(status);
+            System.out.println("Rolling back transaction due to: " + e.getClass());
             throw e;
         }
     }
