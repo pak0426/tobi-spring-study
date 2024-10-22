@@ -193,3 +193,42 @@ public DefaultPointcutAdvisor transactionAdvisor() {
 ```
 
 어드바이저는 `addAdvisor()` 메서드를 통해 넣었다. 여러 개의 값을 넣을 수 있다. 만약 타깃이 모든 메서드에 적용해도 좋기 때문에 포인트컷 적용이 필요 없다면 transactionAdvice 라고 넣을 수도 있다.
+
+
+#### 테스트
+
+테스트 코드도 정리하자
+
+
+```java
+@Test
+    @DirtiesContext
+    public void upgradeAllOrNoting() {
+    ApplicationContext context = new AnnotationConfigApplicationContext(DaoFactory.class);
+    TestUserService testUserService = new TestUserService(users.get(3).getId());
+    testUserService.setUserDao(userDao);
+    testUserService.setMailSender(mailSender);
+
+    ProxyFactoryBean txProxyFactoryBean = new ProxyFactoryBean();
+    txProxyFactoryBean.setTarget(testUserService);
+    DefaultPointcutAdvisor advisor = context.getBean("transactionAdvisor", DefaultPointcutAdvisor.class);
+    txProxyFactoryBean.addAdvisor(advisor);
+    UserService txUserService = (UserService) txProxyFactoryBean.getObject();
+    
+    
+    // ...
+}
+```
+
+이제 스프링이 지원하는 `ProxyFactoryBean` 으로 전환을 마쳤다. UserServiceTest 를 실행하면 성공하는걸 확인할 수 있다.
+`ProxyFactoryBean` 을 생성하고 타겟을 `testUserService` 로 설정해주고,  `ApplicationContext` 에서 `transactionAdvisor` 으로 등록한 빈의 정보를 가져와 어드바이저를 등록해주었다. 어드바이저에는 포인트컷과 어드바이스가 존재하므로 어떤 메서드에 어떤 기능을 추가해줄지에 대한 정보가 들어있다.
+
+#### 어드바이스와 포인트컷의 재사용
+
+`ProxyFactoryBean` 은 스프링의 DI와 템플릿/콜백 패턴, 서비스 추상화 등의 기법이 모두 적용된 것이다. 그 덕분에 독립적이며 여러 프록시가 공유할 수 있는 어드바이스와 포인트컷으로 확장 기능을 분리할 수 있었다.
+
+이제 `UserService` 외에 새로운 비즈니스 로직을 담은 서비스 클래스가 만들어져도 이미 만들어둔 `TransactionAdvice` 를 그대로 재사용할 수 있다. 메서드 선정을 위한 포인트컷이 필요하면 이름 패턴만 지정해 `ProxyFactoryBean` 에 등록해주면 된다.
+
+아래 그림은 `ProxyFactoryBean` 을 이용해 많은 수의 서비스 빈에게 트랜잭션 부가기능을 적용했을 때의 구조다.
+
+<img width="558" alt="image" src="https://github.com/user-attachments/assets/a6f2eeb4-7a7e-43a6-8d1c-acb4d5d6dacc">
