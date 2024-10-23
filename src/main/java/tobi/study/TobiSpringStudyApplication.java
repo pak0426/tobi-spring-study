@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
-@ComponentScan(basePackages = "tobi.study.user.STEP6.스프링의_프록시_팩토리_빈_6_4")
+@ComponentScan(basePackages = "tobi.study.user.STEP6.스프링_AOP_6_5")
 class TobiSpringStudyApplication {
 
     public static void main(String[] args) {
