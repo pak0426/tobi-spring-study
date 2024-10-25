@@ -128,3 +128,173 @@ private void checkAdviced(Object target, Pointcut pointcut, boolean adviced) {
 - `HelloWolrd` 클래스는 클래스 필터에서 탈락된다.
 
 포인트컷이 클래스 필터까지 동작해서 클래스를 걸러버리면 아무리 프록시를 적용하더라도 부가기능은 제공되지 않는다.
+
+
+### 6.5.2 DefaultAdvisorAutoProxyCreator 의 적용
+
+프록시 자동생성 방식에서 사용할 포인트컷을 만드는 방법을 학습 테스트를 만들어가면서 살펴봤으니, 적용해보자.
+
+#### 클래스 필터를 적용한 포인트컷 작성
+
+만들어야 할 클래스는 하나 뿐이다. 메서드 이름만 비교하던 포인트컷인 `NameMatherMethodPointcut` 을 상속해서 프로퍼티로 주어진 이름 패턴을 가지고 클래스 이름을 비교하는 `ClassFilter` 를 추가하도록 만들 것이다. 학습 테스트에서 만들었던 포인트컷과 유사한 클래스다. 아래 코드는 클래스 필터 기능이 추가된 포인트컷이다.
+
+```java
+public class NameMatchClassMethodPointcut extends NameMatchMethodPointcut {
+    public void setMappedClassName(String mappedClassName) {
+        this.setClassFilter(new SimpleClassFilter(mappedClassName));
+    }
+
+
+
+    static class SimpleClassFilter implements ClassFilter {
+        String mappedName;
+
+        public SimpleClassFilter(String mappedName) {
+            this.mappedName = mappedName;
+        }
+
+        @Override
+        public boolean matches(Class<?> clazz) {
+            return PatternMatchUtils.simpleMatch(mappedName, clazz.getSimpleName());
+        }
+    }
+}
+```
+
+#### 어드바이저를 이용하는 자동 프록시 생성기 등록
+
+적용할 자동 프록시 생성기인 `DefaultAdvisorAutoProxyCreator` 는 등록된 빈 중 Advisor 인터페이스를 구현한 것을 모두 찾는다. 그리고 생성되는 모든 빈에 대해 어드바이저 포인트컷을 적용해보면서 프록시 적용 대상을 선정한다. 프록시 선정 대상이라면 프록시를 만들어 원래 빈 오브젝트와 바꿔치기한다. 원래 빈 오브젝트는 프록시 뒤에 연결돼서 프록시를 통해서만 접근 가능하게 바뀌는 것이다. 따라서 타깃 빈에 의존한다고 정의한 다른 빈들은 프록시 오브젝트 대신 DI 받게 될 것이다.
+
+
+#### 포인트컷 등록
+
+아래와 같이 기존의 포인트컷 설정을 삭제하고 새롭게 등록하자.
+
+```java
+@Bean
+public NameMatchClassMethodPointcut transactionPointcut() {
+    NameMatchClassMethodPointcut pointcut = new NameMatchClassMethodPointcut();
+    pointcut.setMappedClassName("*ServiceImpl");
+    pointcut.setMappedName("upgrade*");
+    return pointcut;
+}
+```
+
+#### 어드바이스 어드바이저
+
+어드바이스인 `transactionAdvice`과 아드바이저인 `transactionAdvisor` 빈의 설정은 수정할 게 없다.
+
+하지만 어드바이저로서 사용되는 방법은 바뀌었다. 이제 `ProxyFactoryBean` 으로 등록한 빈에서처럼 `transactionAdvisor`를 명시적으로 DI하는 빈은 존재하지 않는다. 대신 어드바이저를 이용하는 자동 프록시 생성기인 `DefaultAdvisorProxyCreator` 에 의해 자동 수집되고, 프록시 대상 선정 과정에 참여하며, 자동생성된 프록시에 다이내믹하게 DI 돼서 동작하는 어드바이저가 된다.
+
+
+#### ProxyFactoryBean 제거와 서비스 빈의 원상복구
+
+프록시를 도입했던 때부터 아이디를 바꾸고 프록시에 DI 돼서 간접적으로 사용돼야 했던 `userServiceImpl` 빈의 아이디를 이제는 `userService`로 되돌릴 수 있다. 더 이상 명시적인 프록시 팩토리 빈을 등록하지 않기 때문이다. `ProxyFactoryBean` 타입의 빈도 삭제시키자.
+
+```java
+// 삭제
+@Bean
+public ProxyFactoryBean userService() {
+    ProxyFactoryBean proxy = new ProxyFactoryBean();
+    proxy.setTarget(userServiceImpl());
+    proxy.addAdvisor(transactionAdvisor());
+    return proxy;
+}
+
+// 내용 변경 (명시적인 클래스를 인터페이스로 변경)
+@Bean
+public UserService userService() {
+    UserServiceImpl userService = new UserServiceImpl();
+    userService.setUserDao(userDao());
+    userService.setMailSender(mailSender());
+    return userService;
+}
+```
+
+#### 자동 프록시 생성기를 사용하는 테스트
+
+`@Autowired`를 통해 컨텍스트에서 가져오는 `UserService` 타입 오브젝트는 `UserServiceImpl` 오브젝트가 아니라 트랜잭션이 적용된 프록시여야 한다. 이를 검증하려면 `upgradeAllOrNothing()` 테스트가 필요한데, 기존의 테스트 코드에서 사용한 방법으로는 한계가 있다. 
+
+지금까지는 `ProxyFactoryBean` 이 빈으로 등록되어 있었으므로 이를 가져와 타깃을 테스트용 클래스로 바꿔치기하는 방법을 사용했다. 하지만 자동 프록시 생성기를 적용하여 더 이상 가져올 `ProxyFactoryBean` 빈이 존재하지 않는다. 자동 프록시 생성기가 알아서 프록시를 만들어줬기 때문에 프록시 오브젝트만 남아있을 뿐이다.
+
+그럼 어떻게 해야할까? 자동 프록기 생성기는 스프링에 종속적이기 때문에 예외상황을 위한 테스트 대상도 빈으로 등록해줘야 한다. 기존에 만들어 사용하던 `TestUserService` 를 빈으로 등록해보자.   
+그런데 두 가지 문제가 있다. 첫째는 `TestUserService`가 `UserServiceTest` 클래스 내부에 정의된 스태틱 클래스라는 점이고, 둘째는 포인트컷이 트랜잭션 어드바이스를 적용해주는 대상 클래스의 이름 패턴을 '*ServiceImpl' 로 정의해서 `TestUSerService` 클래스를 빈으로 등록해도 포인트컷이 프록시 적용 대상으로 선정해주지 않는다.
+
+이 문제를 해결하기 위해 수정해보자. 스태틱 클래스 자체는 스프링의 빈으로 등록되는 데 문제 없다. 대신 빈으로 등록할 때 클래스 이름을 지정하는 방법을 알아야 한다. 대신 클래스 이름은 포인트컷이 선정해주도록 `ServiceImpl` 로 끝나야 한다.
+
+
+```java
+    @Bean
+public UserService testUserService() {
+    return new TestUserServiceImpl();
+}
+
+static class TestUserServiceImpl extends UserServiceImpl {
+    private String id = "d";
+
+    @Override
+    protected void upgradeLevel(User user) {
+        if (user.getId().equals(id)) throw new RuntimeException();
+        super.upgradeLevel(user);
+    }
+}
+```
+
+```java
+@SpringBootTest
+class UserServiceTest {
+
+    private List<User> users;
+
+    @Autowired
+    private UserService userService;
+
+
+    // 같은 타입의 빈이 두 개 존재하기 때문에 필드 이름을 기준으로 주입될 빈이 결정됨.
+    // 자동 프록시 생성기에 의해 트랜잭션 부가기능이 testUserService 빈에 적용됐는지 확인하는 것이 목적임
+    @Autowired
+    private UserService testUserService;
+        
+    // ...
+
+    @Test
+    @DirtiesContext
+    public void upgradeAllOrNoting() {
+        userDao.deleteAll();
+
+        for (User user : users) {
+            userDao.add(user);
+        }
+
+        try {
+            testUserService.upgradeLevels();
+            fail("RuntimeException expected");
+        } catch (RuntimeException e) {
+
+        }
+
+        checkLevelUpgraded(userDao.get(users.get(1).getId()), false);
+    }
+}
+```
+
+#### 자동생성 프록시 확인
+
+테스트는 성공했다. 몇 가지 특별한 빈 등록과 포인트컷 작성으로 프록시가 자동으로 만들어질 수 있다는걸 확인해보았다.
+
+지금까지 트랜잭션 어드바이스를 적용한 프록시 자동생성기를 빈 후처리기 메커니즘을 통해 적용했다. 최소한 두 가지는 확인해야 한다.
+
+1. 트랜잭션이 필요한 빈에 트랜잭션 부가기능이 적용됐는지
+2. 아무 빈에나 트랜잭션이 부가기능이 적용된 것은 아닌지 확인
+
+포인트컷의 클래스 필터를 이용해 정확히 원하는 빈에만 프록시를 생성했는지 확인해보자. 포인트컷 빈의 클래스 이름 패턴을 변경해서 이번엔 `testUserService` 빈에 트랜잭션이 적용되지 않게 해보자.
+
+```java
+@Bean
+public NameMatchClassMethodPointcut transactionPointcut() {
+    NameMatchClassMethodPointcut pointcut = new NameMatchClassMethodPointcut();
+    pointcut.setMappedClassName("*NotServiceImpl");
+    pointcut.setMappedName("upgrade*");
+    return pointcut;
+}
+```

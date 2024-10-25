@@ -1,8 +1,6 @@
 package tobi.study.user.STEP6.스프링_AOP_6_5;
 
-import org.springframework.aop.framework.ProxyFactoryBean;
 import org.springframework.aop.support.DefaultPointcutAdvisor;
-import org.springframework.aop.support.NameMatchMethodPointcut;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -39,19 +37,27 @@ class DaoFactory {
     }
 
     @Bean
-    public ProxyFactoryBean userService() {
-        ProxyFactoryBean proxy = new ProxyFactoryBean();
-        proxy.setTarget(userServiceImpl());
-        proxy.addAdvisor(transactionAdvisor());
-        return proxy;
-    }
-
-    @Bean
-    public UserServiceImpl userServiceImpl() {
+    public UserService userService() {
         UserServiceImpl userService = new UserServiceImpl();
         userService.setUserDao(userDao());
         userService.setMailSender(mailSender());
         return userService;
+    }
+
+    @Bean
+    public UserService testUserService() {
+        return new UserServiceImpl() {  // 익명 클래스로 직접 정의
+            private String id = "d";
+
+            @Override
+            protected void upgradeLevel(User user) {
+                if (user.getId().equals(id)) throw new RuntimeException();
+                super.upgradeLevel(user);
+            }
+        };
+    }
+
+    static class TestUserServiceException extends RuntimeException {
     }
 
     @Bean
@@ -65,10 +71,11 @@ class DaoFactory {
     }
 
     @Bean
-    public NameMatchMethodPointcut transactionPointcut() {
-        NameMatchMethodPointcut nameMatchMethodPointcut = new NameMatchMethodPointcut();
-        nameMatchMethodPointcut.setMappedName("upgrade*");
-        return nameMatchMethodPointcut;
+    public NameMatchClassMethodPointcut transactionPointcut() {
+        NameMatchClassMethodPointcut pointcut = new NameMatchClassMethodPointcut();
+        pointcut.setMappedClassName("*NotServiceImpl");
+        pointcut.setMappedName("upgrade*");
+        return pointcut;
     }
 
     @Bean
