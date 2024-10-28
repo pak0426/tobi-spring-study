@@ -307,3 +307,45 @@ public NameMatchClassMethodPointcut transactionPointcut() {
 하지만 리플렉션 API는 코드를 작성하기가 제법 번거롭다는 단점이 있다. 또한 리플렉션 API를 이용해 메타정보를 비교하는 방법은 조건이 달라질 때마다 포인트컷 구현 코드를 수정해야 하는 번거로움도 있다.
 
 스프링은 아주 간단한 방법을 제공한다. 정규식이나 JSP의 EL과 비슷한 일종의 표현식 언어를 사용해서 포인트컷을 작성할 수 있게 한다. 이것을 **포인트컷 표현식** 이라고 부른다.
+
+#### 포인트컷 표현식
+
+포인트컷 표현식을 지원하는 포인트컷을 적용하려면 `AspectJExpressionPointcut` 클래스를 사용하면 된다. `Pointcut` 인터페이스를 구현해야 하는 스프링의 포인트컷은 클래스 선정을 위한 **클래스 필터**와 메서드 선정을 위한 **메서드 매처** 두 가지를 제공해야 한다.  
+앞서 만들었던 `NameMatchClassMethodPointcut` 은 클래스와 메서드의 이름의 패턴을 독립적으로 비교하도록 만들어져 있다. 이를 위해 비교할 조건을 가진 두 가지 패턴을 프로퍼티로 넣어줬다. 하지만 `AspectJExpressionPointcut` 은 클래스와 메서드 선정 알고리즘을 포인트컷 표현식을 이용해 한 번에 지정할 수 있게 해준다. 포인트컷 표현식은 자바의 RegEx 클래스가 지원하는 정규식처럼 간단한 문자열로 복잡한 선정조건을 쉽게 만들어낼 수 있는 강력한 표현식을 지원한다. 사실 스프링이 사용하는 포인트컷 표현식은 `AspectJ` 라는 유명 프레임워크에서 제공하는 것을 가져와 일부 문법을 확장해서 사용하는 것이다. 그래서 이를 `AspectJ` 표현식이라고 한다.
+
+학습 테스트를 만들어 살펴보자.
+
+```java
+public interface TargetInterface {
+    void hello();
+    void hello(String a);
+    int minus(int a, int b);
+    int plus(int a, int b);
+    void method();
+}
+
+public class Target implements TargetInterface {
+    @Override
+    public void hello() {}
+
+    @Override
+    public void hello(String a) {}
+
+    @Override
+    public int minus(int a, int b) throws RuntimeException { return 0; }
+
+    @Override
+    public int plus(int a, int b) { return 0; }
+
+    @Override
+    public void method() {}
+}
+
+public class Bean {
+    public void method() throws RuntimeException {
+
+    }
+}
+```
+
+이제 `Target`, `Bean` 클래스와 총 6개의 메서드를 대상으로 포인트컷 표현식을 적용해보자. 
