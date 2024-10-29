@@ -348,4 +348,85 @@ public class Bean {
 }
 ```
 
-이제 `Target`, `Bean` 클래스와 총 6개의 메서드를 대상으로 포인트컷 표현식을 적용해보자. 
+이제 `Target`, `Bean` 클래스와 총 6개의 메서드를 대상으로 포인트컷 표현식을 적용해보자.
+
+#### 포인트컷 표현식 문법
+
+`AspectJ` 포인트컷 표현식은 포인트컷 지시자를 이용해 작성한다. 포인트컷 지시자 중에서 가장 대표적으로 사용되는 것은 `execution()` 이다. 문법 구조는 다음과 같다.
+
+<img width="580" alt="image" src="https://github.com/user-attachments/assets/0d443ed0-4d30-46cf-9f05-ff7316aa5e79">
+
+보갖ㅂ해보이지만, 메서드의 풀 시그니처를 문자열로 비교하는 개념으로 생각하면 간단하다. 리플렉션으로 `Target` 클래스의 `minus()` 라는 메서드의 풀 시그니처를 가져와 비교해보면 이해하기 쉬울 것이다. 다음 문장을 실행하면 리플렉션의 `Method` 오브젝트가 제공하는 `Target.minus()` 메서드의 풀 시그니처를 볼 수 있다.
+
+```java
+System.out.println(Target.class.getMethod("minus", int.class, int.class));
+```
+
+출력된 결과는 다음과 같다.
+
+```
+public int springbook.learingtest.spring.pointcut.Target.minus(int,int) throws java.lang.RuntimeException
+```
+
+##### • public
+접근제한자. public, protected, private 등이 올 수 있고, 포인트컷 표현식에서는 생략 가능하다.
+
+##### • int
+리턴 값의 타입을 나타내는 패턴이다. 포인트컷의 표현식에서 리턴 값의 타입 패턴은 필수 항목이다. 따라서 반드시 하나의 타입을 지정해야 한다. 또는 `*`을 써서 모든 타입을 다 선택하겠다고 해도 된다.
+
+##### • springbook.learingtest.spring.pointcut.Target
+패키지 + 타입 이름을 포함한 클래스의 타입 패턴이다. 생략 가능하다. 생략하면 모든 타입을 다 허용하겠다는 뜻이다. 뒤에 나오는 메서드 이름 패턴과 `.` 으로 연결되기 때문에 작성할 때 잘 구분해야 한다.  
+패키지 이름과 클래스 또는 인터페이스 이름에 `*` 을 사용할 수 있다. 또 `..` 을 사용하면 한 번에 여러 개의 패키지를 선택할 수 있다.
+
+##### • minus
+메서드 이름 패턴이다. 필수항목이다. 모든 메서드를 다 선택하겠다면 `*` 를 넣으면 된다.
+
+##### • (int,int)
+메서드 파라미터의 타입 패턴이다. `,` 로 파라미터를 구분하고 순서대로 적으면 된다. 파라미터가 없는 메서드를 지정할 땐 `()`로 적는다.  
+다 허용하는 패턴을 만드려면 `..` 을 넣으면 된다. `...` 을 이용해서 뒷부분의 파라미터 조건만 생략할 수 있다. 
+필수항목이다.
+
+##### • throws java.lang.RuntimeException
+
+예외 이름에 대한 타입 패턴. 생략 가능
+
+`Method` 오브젝트를 출력했을 때 나오는 메서드 시그니처랑 동일한 구조를 가지고 비교하는 것이기에 이해하기 어렵지 않다. `Target` 클래스의 `minus()` 메서드만 선정해주는 포인트컷 표현식을 만들고 이를 검증하는 테스트를 작성해보자.
+
+
+```java
+public class PointcutTest {
+    @Test
+    public void methodSignaturePointcut() throws SecurityException, NoSuchMethodException {
+        AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+
+        // Target 클래스 minus() 메서드 시그니처
+        pointcut.setExpression("execution(public int " + "tobi.study.user.STEP6.스프링_AOP_6_5.pointcut.Target.minus(int,int) " +
+                "throws java.lang.RuntimeException)");
+
+        // Target.minus()
+        assertThat(pointcut.getClassFilter().matches(Target.class)).isTrue();
+        assertThat(pointcut.getMethodMatcher().matches(
+                Target.class.getMethod("minus", int.class, int.class), null))
+                .isTrue();
+
+        // Target.plus() - 메서드 매처에서 실패
+        assertThat(pointcut.getClassFilter().matches(Target.class) &&
+                pointcut.getMethodMatcher().matches(
+                        Target.class.getMethod("plus", int.class, int.class), null))
+                .isFalse();
+
+        // Bean.method() - 클래스 필터에서 실패
+        assertThat(pointcut.getClassFilter().matches(Bean.class) &&
+                pointcut.getMethodMatcher().matches(
+                        Bean.class.getMethod("method"), null))
+                .isFalse();
+
+    }
+}
+```
+
+AspectJExpressionPointcut 클래스의 오브젝트를 만들고 포인트컷 표현식을 expression 프로퍼티에 넣어주면 포인트컷을 사용할 준비가 된다. 포인트컷 표현식은 메서드 시그니처를 `execution()` 안에 넣어서 작성한다. `execution()` 은 메서드를 실행에 대한 포인트컷이라는 의미다.
+
+먼저 `Target` 클래스의 `minus()` 메서드에 대해 테스트를 해본다. 포인트컷의 선정 방식은 클래스 필터와 메서드 매처를 각각 비교해보는 것이다. 두 가지 조건을 모두 만족시키면 해당 메서드는 포인트컷의 선정 대상이 된다.
+
+`Target` 클래스의 다른 메ㅓ드를 비교해본다. 클래스, 파라미터 등은 통과하지만, 메서드 이름과 예외 패턴이 포인트컷 표현식과 일치하지 않기 때문에 결과는 **false** 다. 

@@ -22,6 +22,7 @@ dependencies {
     implementation 'com.h2database:h2'
     implementation 'org.junit.jupiter:junit-jupiter-engine'
     implementation 'org.junit.jupiter:junit-jupiter-api'
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
 
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
