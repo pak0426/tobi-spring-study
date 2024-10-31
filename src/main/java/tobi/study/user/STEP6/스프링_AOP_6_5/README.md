@@ -430,3 +430,67 @@ AspectJExpressionPointcut 클래스의 오브젝트를 만들고 포인트컷 �
 먼저 `Target` 클래스의 `minus()` 메서드에 대해 테스트를 해본다. 포인트컷의 선정 방식은 클래스 필터와 메서드 매처를 각각 비교해보는 것이다. 두 가지 조건을 모두 만족시키면 해당 메서드는 포인트컷의 선정 대상이 된다.
 
 `Target` 클래스의 다른 메ㅓ드를 비교해본다. 클래스, 파라미터 등은 통과하지만, 메서드 이름과 예외 패턴이 포인트컷 표현식과 일치하지 않기 때문에 결과는 **false** 다. 
+
+#### 포인트컷 표현식 테스트
+
+메서드 시그니처를 그대로 사용한 포인트 표현식을 문법구조로 참고로 해서 정리해보자.  
+이 중에서 필수가 아닌 항목인 접근제한자 패턴, 클래스 타입 패턴, 예외 패턴은 생략할 수 있다. 옵션 항목을 생략하면 다음과 같이 간단하게 만들 수 있다.
+
+```java
+// int 타입의 리턴 값, minus 라는 메서드 이름, 두 개의 int 파라미터를 가진 모든 메서드를 선정
+execution(int minus(int,int))
+```
+
+좀 더 간결해졌지만, 이 포인트컷 표현식은 어떤 접근 제한자를 가졌든, 어떤 클래스에 정의됐든, 어떤 예외를 던지든 상관없이 정수 값을 리턴하고 두 개의 정수형 파라미터를 갖는 minus 라는 이름의 모든 메서드를 선정하는 좀 더 느슨한 포인트컷이 됐다는 점에 주의하자.
+
+리턴 값의 타입에 제한을 없애려면 `*` 와일드 카드를 쓰면 된다.
+
+```java
+// 리턴 타입은 상관없이 minus라는 메서드 이름, 두 개의 int 파라미터를 가진 모든 메서드를 선정
+execution(* minus(int,int))
+```
+
+모든 선정조건을 다 없애고 모든 메서드를 다 허용하는 포인트컷이 필요하다면 다음과 같이 메서드 이름도 바꾸면 된다.
+
+```java
+// 리턴 타입, 파라미터, 메서드 이름에 상관없이 모든 메서드 조건을 다 허용하는 포인트컷 표현식
+execution(* *(..))
+```
+
+테스트를 보충해보자. 앞에서 만든 Target, Bean 클래스의 6개 메서드에 대해 각각 포인트컷을 적용해서 결과를 확인하는 테스트다.
+
+```java
+public void pointcutMatches(String expression, Boolean expected, Class<?> clazz, String methodName, Class<?>... args) throws Exception {
+    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+    pointcut.setExpression(expression);
+
+    assertThat(pointcut.getClassFilter().matches(clazz)
+    && pointcut.getMethodMatcher().matches(clazz.getMethod(methodName, args), null))
+            .isTrue();
+}
+```
+다음은 `pointcutMatches()` 메서드를 활용해서 타깃으로 만든 두 클래스의 모든 메서드에 대해 포인트컷 선정 여부를 확인하는 메서드를 추가한다.
+
+```java
+public void targetClassPointcutMatches(String expression, boolean... expected) throws Exception {
+    pointcutMatches(expression, expected[0], Target.class, "hello");
+    pointcutMatches(expression, expected[1], Target.class, "hello", String.class);
+    pointcutMatches(expression, expected[2], Target.class, "plus", int.class, int.class);
+    pointcutMatches(expression, expected[3], Target.class, "minus", int.class, int.class);
+    pointcutMatches(expression, expected[4], Target.class, "method");
+    pointcutMatches(expression, expected[5], Bean.class, "method");
+}
+```
+
+이제 다양한 포인트컷을 만들어서 모든 메서드에 대한 포인트컷 적용 결과를 확인해보자. 아래 표는 포인트컷 표현식과 그에 대한 `targetClassPointcutMatches()` 의 각 메서드별 포인트컷 검사 결과다. 총 19가지의 포인트컷 표현식에 대해 결과를 검증할 수 있도록 만들어진 테스트의 결과를 정리한 것이다.
+
+```java
+@Test
+public void pointcut() throws Exception {
+    targetClassPointcutMatches("execution(* *(..))", true, true, true, true, true, true);
+}
+```
+
+아래 표를 보고 테스트 결과를 확인해보자.
+
+<img width="507" alt="image" src="https://github.com/user-attachments/assets/09eb9b33-bbd9-4447-b2aa-1aa153bbe0b9">
