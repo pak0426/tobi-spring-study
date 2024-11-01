@@ -1,5 +1,6 @@
 package tobi.study.user.STEP6.스프링_AOP_6_5;
 
+import org.springframework.aop.aspectj.AspectJExpressionPointcut;
 import org.springframework.aop.support.DefaultPointcutAdvisor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -57,29 +58,11 @@ class DaoFactory {
         };
     }
 
-    static class TestUserServiceException extends RuntimeException {
-    }
-
     @Bean
-    public PlatformTransactionManager transactionManager() {
-        return new DataSourceTransactionManager(dataSource());
-    }
-
-    @Bean
-    public TransactionAdvice transactionAdvice() {
-        return new TransactionAdvice(transactionManager());
-    }
-
-    @Bean
-    public NameMatchClassMethodPointcut transactionPointcut() {
-        NameMatchClassMethodPointcut pointcut = new NameMatchClassMethodPointcut();
-        pointcut.setMappedClassName("*NotServiceImpl");
-        pointcut.setMappedName("upgrade*");
+    public AspectJExpressionPointcut transactionPointcut() {
+        AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+        String expression = "* *..*ServiceImpl.upgrade*(..))";
+        pointcut.setExpression(expression);
         return pointcut;
-    }
-
-    @Bean
-    public DefaultPointcutAdvisor transactionAdvisor() {
-        return new DefaultPointcutAdvisor(transactionPointcut(), transactionAdvice());
     }
 }

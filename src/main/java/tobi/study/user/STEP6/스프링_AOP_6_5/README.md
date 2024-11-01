@@ -494,3 +494,35 @@ public void pointcut() throws Exception {
 아래 표를 보고 테스트 결과를 확인해보자.
 
 <img width="507" alt="image" src="https://github.com/user-attachments/assets/09eb9b33-bbd9-4447-b2aa-1aa153bbe0b9">
+
+
+#### 포인트컷 표현식을 이용하는 포인트컷 적용
+
+AspectJ 포인트컷 표현식은 메서드를 선정하는 데 편리하게 쓸 수 있는 강력한 표현식 언어다. `execution()` 외에도 몇 가지 표현식 스타일을 갖고 있다.  
+`bean(*Service)` 이라고 쓰면 아이디가 `Service`로 끝나는 모든 빈을 선택한다. 단지 클래스와 메서드라는 기준을 넘어서는 유용한 선정 방식이다.  
+또 특정 애노테이션의 타입, 메서드, 파라미터에 적용되어 있는 것을 보고 메서드를 선정하게 하는 포인트컷을 만들 수 있다. 아래는 `@Transactional` 애노테이션이 적용된 메서드를 선정해준다.
+
+```java
+@annotation(org.springframework.transaction.annotation.Transactional)
+```
+
+이제 적용해볼 차례다. 앞에서 만든 `transactionPointcut` 빈은 제거하자. 이제 `nameMatchClassMethodPointcut` 과 같이 직접 만든 포인트컷 구현 클래스를 사용할 일은 없을 것이다.
+
+```java
+pointcut.setMappedClassName("*NotServiceImpl");
+pointcut.setMappedName("upgrade*");
+```
+
+기존 적용되었던 선정 조건을 다시 보자. 이걸 바탕으로 동일한 기준의 포인트컷 표현식을 만들어 보자.
+
+```java
+@Bean
+public AspectJExpressionPointcut transactionPointcut() {
+    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+    String expression = "* *..*ServiceImpl.upgrade*(..))";
+    pointcut.setExpression(expression);
+    return pointcut;
+}
+```
+
+설정 파일을 수정했으면 `UserServiceTest` 테스트를 수행해보자.
