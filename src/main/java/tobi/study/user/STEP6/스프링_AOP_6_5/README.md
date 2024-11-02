@@ -526,3 +526,16 @@ public AspectJExpressionPointcut transactionPointcut() {
 ```
 
 설정 파일을 수정했으면 `UserServiceTest` 테스트를 수행해보자.
+
+
+#### 타입 패턴과 클래스 이름 패턴
+
+포인트컷 표현식을 적용하기 전에는 클래스 이름의 패턴을 이용해 타깃 빈을 선정하는 포인트컷을 사용했다. `UserService` 를 구현한 `UserServiceImpl` 클래스와 테스트를 위한 `TestUserServiceImpl` 모두 빈으로 등록하고 해당 빈을 선정하는 포인트컷을 구성했다.  
+이러한 방식을 타입 패턴으로 `*..*ServiceImpl` 로 풀어내니 간결해졌다.
+
+그런데 앞에서 사용했던 단순한 클래스 이름 패턴과 포인트컷 표현식에서 사용하는 타입 패턴은 중요한 차이점이 있다. 이를 확인하기 위해서 `TestUserServiceImpl` 이라고 변경했던 테스트용 클래스의 이름을 다시 `TestUserService`로 바꿔보자.
+
+테스트를 해보면 타입 패턴이 `*..*ServiceImpl` 이므로 `TestUserService`는 선정되지 않을 것이고, 테스트는 실패일거 같다. 하지만 실제로 실행해보면 결과는 성공이다.  
+이 이유는 포인트컷 표현식의 클래스 이름에 적용되는 패턴은 클래스 이름 패턴이 아니라 타입 패턴이기 때문이다. `TesrUserService` 의 이름은 `TestUserService` 일 뿐, 타입을 따져보면 `TestUserService` 클래스이자, `UserServiceImpl`, 구현 인터페이스인 `UserService` 세가지 모두 적용된다. 즉 `TestUserService` 클래스로 정의된 빈은 `UserServiceImpl` 타입이기도 하고, 그 때문에 `ServiceImpl` 로 끝나는 타입 패턴의 조건을 충족하는 것이다. 포인트컷 표현식 테스트의 16번을 다시 생각해보면 이해가 될 것이다.
+
+포인트컷 표현식의 타입 패턴 항목을 `*..UserService` 라고 직접 인터페이스 이름을 명시해도 두 개의 빈이 모두 선정된다. 두 클래스 모두 U`serService` 인터페이스를 구현하기 때문이다.
