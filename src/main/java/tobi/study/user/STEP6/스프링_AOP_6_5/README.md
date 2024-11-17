@@ -77,3 +77,8 @@ public Object invoke(MethodInvocation invocation) throws Throwable {
 `TransactionDefinition` 타입 오브젝트를 사용하면 4가지 속성을 이용하여 제어할 수 있다.
 
 트랜잭션 정의를 수정하려면 `TransactionDefinition` 오브젝트를 생성하고 사용하는 코드는 트랜잭션 경계설정 기능을 가진 `TransactionAdvice`다. 트랜잭션 정의를 바꾸고 싶다면 디폴트 속성을 갖고 있는 `DefaultTransactionDefinition`을 사용하는 대신 외부에서 정의된 `TransactionDefinition` 오브젝트를 DI 받아서 사용하도록 만들면 된다. `TransactionDefinition` 오브젝트를 DI 받아서 사용하도록 만들면 된다. `TransactionDefinition` 타입의 빈을 정의해두면 프로퍼티를 통해 원하는 속성을 지정해줄 수 있다. 하지만 이 방법으로 트랜잭션 속성을 변경하면 `TransactionAdvice`를 사용하는 모든 트랜잭션의 속성이 한꺼번에 바뀐다는 문제가 있다. 원하는 메서드만 선택해서 독자적인 트랜잭션 정의를 적용할 수 없을까?
+
+### 6.6.2 트랜잭션 인터셉터와 트랜잭션 속성
+
+메서드별로 다른 트랜잭션 정의를 적용하려면 어드바이스의 기능을 확장해야 한다. 마치 초기에 `TransactionHandler` 에서 메서드 이름을 이용해 트랜잭션 적용 여부를 판단했던 것과 비슷한 방식을 사용하면 된다. 메서드 이름 패턴에 따라 다른 트랜잭션 정의가 적용되도록 만드는 것이다.
+
