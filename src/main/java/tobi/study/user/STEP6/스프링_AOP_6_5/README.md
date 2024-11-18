@@ -82,3 +82,35 @@ public Object invoke(MethodInvocation invocation) throws Throwable {
 
 메서드별로 다른 트랜잭션 정의를 적용하려면 어드바이스의 기능을 확장해야 한다. 마치 초기에 `TransactionHandler` 에서 메서드 이름을 이용해 트랜잭션 적용 여부를 판단했던 것과 비슷한 방식을 사용하면 된다. 메서드 이름 패턴에 따라 다른 트랜잭션 정의가 적용되도록 만드는 것이다.
 
+#### TransactionInterceptor
+
+이를 위해 기존에 만들었던 `TransactionAdvice`를 다시 설계할 필요는 없다. 이미 스프링에는 편리하게 트랜잭션 경계설정 어드바이스로 사용할 수 있도록 만들어진 `TransactionInterceptor`가 존재하기 때문이다. `TransactionAdvice`는 어드바이스의 동작원리를 알아보려고 만들었던 것이므로 그만 사용하고, 이제부터 스프링의 `TransactionInterceptor`를 이용해보자.
+
+`TransactionInterceptor` 어드바이스의 동작방식은 기존에 만들었던 `TransactionAdvice`와 다르지 않다. 다만 트랜잭션 정의를 메서드 이름 패턴을 이용해 다르게 지정할 수 있는 방법을 추가로 제공해준다. `TransactionInterceptor`는 `PlatformTransactionManager`와 `Properties` 타입의 두 가지 프로퍼티를 갖고 있다. 트랜잭션 매니저 프로퍼티는 잘 알고 있지만 `Properties` 타입의 프로퍼티는 처음 보는 것이다.
+
+`Properties` 타입인 두 번째 프로퍼티 이름은 `transactionAttributes`로, 트랜잭션 속성을 정의한 프로퍼티다. 트랜잭션 속성은 `TransactionDefinition`의 네 가지 기본 항목 `rollbackOn()` 이라는 메서드를 하나 더 갖고 있는 `TransactionAttribute` 인터페이스로 정의된다. `rollbackOn()` 메서드는 어떤 예외가 발생하면 롤백을 할 것인가를 결정하는 메서드다. 이 `TransactionAttribute`를 이용하면 트랜잭션 부가기능의 동작방식을 모두 제어할 수 있다.
+
+아래의 `TransactionAdvice` 경계설정 코드를 다시 살펴보면 트랜잭션 부가기능의 동작방식을 변경할 수 있는 곳이 두 군데 있다는 사실을 알 수 있다.
+
+```java
+public Object invoke(MethodInvocation invocation) throws Throwable {
+    TransactionStatus status = this.transactionManager.getTransaction(new DefaultTransactionDefinition()); // 트랜잭션 정의를 통한 4가지 조건
+
+    try {
+        Object ret = invocation.proceed(); // 롤백 대상인 예외 종류
+        this.transactionManager.commit(status);
+        System.out.println("Committing transaction");
+        return ret;
+    } catch (RuntimeException e) {
+        this.transactionManager.rollback(status);
+        System.out.println("Rolling back transaction due to: " + e.getClass());
+        throw e;
+    }
+}
+```
+
+`TransactionAdvice`는 `RuntimeException`이 발생하는 경우에만 트랜잭션을 롤백시킨다. 하지만 런타임 예외가 아닌 경우에는 트랜잭션이 제대로 처리되지 않고 메서드를 빠져나가게 되어 있다. `UserService`는 런타임 예외만 던진다는 사실을 알기 때문에 일단 이렇게 정의해도 상관없지만, 체크 예외를 던지는 타깃에 사용한다면 문제가 될 수 있다. 그렇다면 런타임 예외만이 아니라 모든 종류의 예외에 대해 트랜잭션을 롤백시키도록 해야할 까? 안된다. 비즈니스상의 예외 경우를 나타내기 위해 타깃 오브젝트가 체크 예외를 던지는 경우에는 DB 트랜잭션은 커밋시켜야 하기 때문이다. 2장에서 봤듯 일부 체크 예외는 정상적인 작업 흐름 안에서 사용될 수도 있다.
+
+스프링이 제공하는 `TransactionInterceptor`에는 기본적으로 두 가지 종류의 예외처리 방식이 있다. 런타임 예외가 발생하면 트랜잭션은 롤백된다. 반면에 타깃 메서드가 런타임 예외가 아닌 체크 예외를 던지는 경우에는 이것을 예외 상황이라고 해석하지 않고 트랜잭션을 커밋한다. 스프링의 기본적인 예외처리 원칙에 따라 비즈니스적인 의미가 있는 예외 상황에만 체크 예외를 사용하고 그 외의 모든 복구 불가능한 순수한 예외의 경우 런타임 예외로 포장돼서 잔달하는 방식을 따른다고 가정하기 때문이다.
+
+그런데 `TransactionInterceptor`의 이러한 예외처리 기본 원칙을 따르지 않는 경우가 있을 수 있다. 그래서 `TransactionAttribute` 는 `rollbackOn()` 이라는 속성을 둬서 기본 원칙과 다른 예외처리가 가능하게 해준다. 이를 활용하면 특정 체크 에외의 경우는 트랜잭션을 롤백시키고, 특정 런타임 예외에 대해서는 트랜잭션을 커밋 시킬 수 있다.
