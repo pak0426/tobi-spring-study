@@ -39,6 +39,26 @@ public class UserServiceImpl implements UserService {
         userDao.add(user);
     }
 
+    @Override
+    public User get(String id) {
+        return userDao.get(id);
+    }
+
+    @Override
+    public List<User> getAll() {
+        return userDao.getAll();
+    }
+
+    @Override
+    public void deleteAll() {
+        userDao.deleteAll();
+    }
+
+    @Override
+    public void update(User user) {
+        userDao.update(user);
+    }
+
     private boolean canUpgradeLevel(User user) {
         Level level = user.getLevel();
         switch (level) {
