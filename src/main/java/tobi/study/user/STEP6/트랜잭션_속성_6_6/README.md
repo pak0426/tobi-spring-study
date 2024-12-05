@@ -297,3 +297,77 @@ public AspectJExpressionPointcut transactionPointcut() {
 ```
 
 이제 아이디가 Service로 끝나는 모든 빈에 `transactionAdvice` 빈의 부가기능이 적용될 것이다.
+
+#### 트랜잭션 속성을 가진 트랜잭션 어드바이스 등록
+
+다음은 `TransactionAdvice` 클래스로 정의했던 어드바이스 빈을 스프링의 `TransactionInterceptor`를 이용하도록 변경한다. 메서트 패턴과 트랜잭션 속성은 가장 보편적인 방법인 get으로 시작하는 메서드는 읽기 전용 속성을 두고 나머지는 디폴트 트랜잭션 속성을 따르도록 설정한다. 다음과 같이 만들면 된다.
+
+```java
+@Bean
+public PlatformTransactionManager transactionManager() {
+    return new DataSourceTransactionManager(dataSource());
+}
+@Bean
+public TransactionInterceptor transactionAdvice() {
+    TransactionInterceptor txInterceptor = new TransactionInterceptor();
+    txInterceptor.setTransactionManager(transactionManager());
+
+    Properties txAttributes = new Properties();
+    txAttributes.setProperty("get*", "PROPAGATION_REQUIRED,readOnly");
+    txAttributes.setProperty("*", "PROPAGATION_REQUIRED");
+
+    txInterceptor.setTransactionAttributes(txAttributes);
+    return txInterceptor;
+}
+
+@Bean
+public AspectJExpressionPointcut transactionPointcut() {
+    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+    String expression = "bean(*Service)";
+    pointcut.setExpression(expression);
+    return pointcut;
+}
+
+@Bean
+public DefaultPointcutAdvisor transactionAdvisor() {
+    DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor();
+    advisor.setPointcut(transactionPointcut());
+    advisor.setAdvice(transactionAdvice());
+    return advisor;
+}
+
+@Bean(name = "transactionAdvice")
+public TransactionInterceptor txAdvice() {
+    NameMatchTransactionAttributeSource txAttributeSource = new NameMatchTransactionAttributeSource();
+
+    // get* 메소드에 대한 트랜잭션 속성 설정
+    RuleBasedTransactionAttribute readOnlyTx = new RuleBasedTransactionAttribute();
+    readOnlyTx.setReadOnly(true);
+    readOnlyTx.setPropagationBehavior(Propagation.REQUIRED.value());
+
+    // 나머지 메소드에 대한 트랜잭션 속성 설정
+    RuleBasedTransactionAttribute requiredTx = new RuleBasedTransactionAttribute();
+    requiredTx.setPropagationBehavior(Propagation.REQUIRED.value());
+
+    // 트랜잭션 속성 맵핑
+    Map<String, TransactionAttribute> txMethods = new HashMap<>();
+    txMethods.put("get*", readOnlyTx);
+    txMethods.put("*", requiredTx);
+
+    txAttributeSource.setNameMap(txMethods);
+
+    return new TransactionInterceptor(transactionManager(), txAttributeSource);
+}
+
+@Bean
+public Advisor txAdvisor() {
+    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+    pointcut.setExpression("execution(* *..*Service.*(..))");
+
+    return new DefaultPointcutAdvisor(pointcut, txAdvice());
+}
+```
+
+이쯤에서 테스트를 수행해서 확인해보자.
+
+<img width="308" alt="image" src="https://github.com/user-attachments/assets/bd627a91-9c7e-4ded-beeb-73206fb657a0">
