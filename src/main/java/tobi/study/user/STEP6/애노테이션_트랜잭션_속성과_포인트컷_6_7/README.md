@@ -51,3 +51,15 @@ public @interface Transactional {
 ```
 
 `@Transactional` 어노테이션의 타깃은 메서드와 타입이다. 따라서 메서드, 클래스, 인터페이스에 사용할 수 있다. `@Transactional` 어노테이션을 트랜잭션 속성정보로 사용하도록 지정하면 스프링은 `@Transactional` 이 부여된 모든 오브젝트를 자동으로 타기 오브젝트로 인식한다. 이때 사용되는 포인트컷은 `TransactionAttributeSourcePointcut` 이다. `TransactionAttributeSourcePointcut`은 스스로 표현식과 같은 선정기준을 갖고 있진 않다. 대신 `@Transactional` 이 타입 레벨이든 메서드 레벨이든 상관없이 부여된 빈 오브젝트를 모두 찾아 포인트컷의 선정 결과로 돌려준다. `@Transactional` 은 기본적으로 트랜잭션 속성을 정의하는 것이지만, 동시에 포인트컷의 자동등록에도 사용된다.
+
+#### 트랜잭션 속성을 이용하는 포인트컷
+
+아래 그림은 `@Transactional` 어노테이션을 사용했을 때 어드바이스 동작방식을 보여준다. `TransactionInterceptor`는 메서드 이름 패턴을 통해 부여되는 트랜잭션 속성정보 대신 `@Transactional` 의 앨리먼트에서 트랜잭션 속성을 가져오는 `AnnotationTransactionAttributeSource` 를 사용한다. `@Transactional`은 메서드마다 다르게 설정할 수 있어 매우 유연하다.
+
+동시에 포인트컷도 `@Transactional`을 통한 트랜잭션 속성정보를 참조해 만든다. `@Transactional`로 트랜잭션 속성이 부여된 오브젝트라면 포인트컷 선정 대상이기도 하기 때문이다.
+
+<img width="554" alt="image" src="https://github.com/user-attachments/assets/facb9323-f0bb-4c7f-a415-ce2d009ef317">
+
+이 방식을 사용하면 포인트컷과 트랜잭션 속성을 어노테이션 하나로 지정할 수 있다. 트랜잭션 속성은 타입 레벨에 일괄적으로 부여할 수도 있지만, 메서드 단위로 세분화해서 트랜잭션 속성을 다르게 지정할 수도 있기 때문에 매우 세밀한 트랜잭션 속성 제어가 가능해진다.
+
+트랜잭션 부가기능 적용 단위는 메서드다. 따라서 메서드마다 `@Transactional`을 부여하고 속성을 지정할 수 있다. 이렇게 하면 속성 제어는 가능하겠지만 코드는 지저분해지고, 동일한 속성 정보를 가진 어노테이션을 반복적으로 메서드마다 부여해주는 바람직하지 못한 결과를 가져올 수 있다.
