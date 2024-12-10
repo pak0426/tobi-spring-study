@@ -83,3 +83,68 @@ public @interface Transactional {
 프록시 방식 AOP의 동작원리를 잘 이해하고 있고 `@Transactional`의 적용 대상을 적잘하게 변경해줄 확신이 있거나, 반드시 인터페이스를 사용하는 타깃에만 트랜잭션을 적용하겠다는 확인이 있다면 인터페이스에 `@Transactional`을 적용하고 아니라면 타깃 클래스, 메서드에 적용하는 편이 낫다.
 
 인터페이스에 `@Transactional`을 두면 구현 클래스가 바뀌더라도 트랜잭션 속성을 유지할 수 있다는 장점이 있다.
+
+### 6.7.2 트랜잭션 어노테이션 적용
+
+`@Transactional`을 `UserService`에 적용해보자.
+
+아직 세밀한 트랜잭션 속성 설정이 필요하진 않다. 하지만 꼭 세밀한 트랜잭션 설정이 필요할 때만 `@Transactional`을 사용해야 하는 것은 안디ㅏ. `@Transactional`을 이용하는 트랜잭션 설정이 직관적이고 간단하다고 생각해서 사용하는 경우도 많다. 클래스, 빈, 메서드의 이름에 일관된 패턴을 만들어 적용하고 이를 활용해 포인트컷과 트랜잭션 속성을 지정하는 것보다 단순하게 트랜잭션이 필요한 타입 또는 메서드에 직접 어노테이션을 부여하는 것이 훨씬 편리하고 코드를 이해하기도 좋다.
+
+다만 트랜잭션 적용 대상을 손쉽게 파악할 수 없고, 사용 정책을 잘 만들어두지 않으면 무분별하게 사용되거나 자칫 빼먹을 위험도 있다. 트랜잭션이 적용되지 않았다는 사실은 파악하기가 쉽지 않다. 일반적으로는 트랜잭션이 적용되지 않았다고 기능이 동작하지 않는 것도 아니므로 예외적인 상황이 발생해서 롤백이 필요한 시점이 돼야 비로소 이상하다는 걸 느끼고 트랜잭션 적용 여부를 확인해보게 된다. 따라서 `@Transactional`을 사용할 때는 실수하지 않아야 하고, 적용에 대한 별도의 코드 리뷰를 거칠 필요가 있다. 다행히 일부 데이터 액세스 기술은 트랜잭션이 시작되지 않으면 아예 DAO에서 예외가 발생하기도 한다. 하지만 JDBC를 직접 사용하는 기술의 경우 트랜잭션이 없어도 DAO가 동작할 수 있기 때문에 주의해야 한다.
+
+이전에
+
+```java
+Map<String, TransactionAttribute> txMethods = new HashMap<>();
+txMethods.put("get*", readOnlyTx);
+txMethods.put("*", requiredTx);
+
+txAttributeSource.setNameMap(txMethods);
+```
+
+이 코드를 통해 2가지 종류의 트랜잭션 속성을 지정했다. get* 속성이 우선 적용되고 나머지는 디폴트 속성을 갖는다.
+
+어노테이션을 이용할 때는 이 두가지 속성 중에서 많이 사용되는 한 가지를 타입 레벨에 공통 속성을 지정해주고, 나머지 속성은 개별 메서드에 적용해야 한다. 메서드 레벨의 속성은 메서드마다 반복돼야 하므로 속성의 종류가 두 가지 이상이고 적용 대상 메서드의 비율이 비슷하다면 메서드에 많은 `@Transactional` 어노테이션이 반복될 수 있다.
+
+`@Transactional`은 `UserServiceImpl` 클래스 대신 `UserService` 인터페이스에 적용하겠다. 그래야 `UserServiceImpl`과 TestUserService 양쪽에 트랜잭션이 적용될 수 있기 때문이다. 인터페이스 방식의 프록시를 사용하는 경우에는 인터페이스에 `@Transactional`을 적용해도 상관없다. `UserService`에는 get으로 시작하지 않는 메서드가 더 많으므로 아래처럼 인터페이스 레벨에 디폴트 속성을 부여해주고, 읽기 전용 속성을 지정할 get으로 시작하는 메서드에는 읽기전용 트랜잭션 속성을 반복해서 지정해야 한다.
+
+```java
+@Transactional
+public interface UserService {
+    void add(User user);
+    void deleteAll();
+    void update(User user);
+    void upgradeLevels();
+    
+    @Transactional(readOnly = true)
+    User get(String id);
+    
+    @Transactional(readOnly = true)
+    List<User> getAll();
+}
+```
+
+이렇게 인터페이스에도 적용해보고 타깃 클래스에도 어노테이션을 적용해보고 번갈아가면서 테스트를 실행해보자. 결과는 둘 다 성공한다.
+
+```java
+@Transactional
+public class UserServiceImpl implements UserService {
+    // ...
+
+    @Override
+    @Transactional(readOnly = true)
+    public User get(String id) {
+        return userDao.get(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<User> getAll() {
+        return userDao.getAll();
+    }
+    
+    // ...
+}
+```
+
+어노테이션에 대한 대체 정책의 순서는 타깃 클래스가 인터페이스보다 우선하므로 모든 메서드의 트랜잭션은 디폴트 속성을 갖게 된다. 따라서 `UserService` 인터페이스의 `getAll()` 메서드에 부여한 읽기전용 속성은 무시되고, 읽기전용 속성을 검증하는 검증하는 `readOnlyTransactionAttribute()` 테스트는 실패할 것이다. 굳이 완전한 테스트로 만들어두지 않더라도 이런 식으로 스프링의 기능을 검증해보는 건 좋은 습관이다. 때로는 어설프게 이해하고 넘어갈 수 있는 지식을 바로 잡아주는 데 도움이 되기 때문이다.

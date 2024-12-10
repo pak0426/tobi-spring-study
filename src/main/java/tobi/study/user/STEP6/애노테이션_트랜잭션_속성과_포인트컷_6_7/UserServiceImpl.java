@@ -3,9 +3,12 @@ package tobi.study.user.STEP6.애노테이션_트랜잭션_속성과_포인트�
 import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Transactional
 public class UserServiceImpl implements UserService {
 
     private UserDao userDao;
@@ -40,11 +43,13 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public User get(String id) {
         return userDao.get(id);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<User> getAll() {
         return userDao.getAll();
     }
@@ -72,19 +77,5 @@ public class UserServiceImpl implements UserService {
     protected void upgradeLevel(User user) {
         user.upgradeLevel();
         userDao.update(user);
-        sendUpgradeEmail(user);
-    }
-
-    private void sendUpgradeEmail(User user) {
-        JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
-        mailSender.setHost("mail.server.com");
-
-        SimpleMailMessage mailMessage = new SimpleMailMessage();
-        mailMessage.setTo(user.getEmail());
-        mailMessage.setFrom("useradmin@ksug.org");
-        mailMessage.setSubject("upgrade 안내");
-        mailMessage.setText("사용자님의 등급이 " + user.getLevel().name());
-
-        this.mailSender.send(mailMessage);
     }
 }

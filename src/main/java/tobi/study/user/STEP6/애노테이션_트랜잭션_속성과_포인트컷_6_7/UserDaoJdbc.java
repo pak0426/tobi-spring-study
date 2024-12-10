@@ -2,6 +2,7 @@ package tobi.study.user.STEP6.애노테이션_트랜잭션_속성과_포인트�
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
 import java.util.List;
