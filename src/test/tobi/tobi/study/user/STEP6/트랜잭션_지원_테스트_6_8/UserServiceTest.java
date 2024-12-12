@@ -8,6 +8,7 @@ import org.springframework.mail.MailException;
 import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,6 +31,9 @@ class UserServiceTest {
 
     @Autowired
     private UserDao userDao;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
 
     @BeforeEach
@@ -117,6 +121,14 @@ class UserServiceTest {
         }
 
         checkLevelUpgraded(users.get(1), false);
+    }
+
+    @Test
+    public void transactionSync() {
+        userService.deleteAll();
+
+        userService.add(users.get(0));
+        userService.add(users.get(1));
     }
 
     static class TestUserService extends UserServiceImpl {

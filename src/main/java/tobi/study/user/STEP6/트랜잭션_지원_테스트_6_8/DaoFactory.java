@@ -2,6 +2,7 @@ package tobi.study.user.STEP6.트랜잭션_지원_테스트_6_8;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 
 import javax.sql.DataSource;
@@ -45,5 +46,10 @@ class DaoFactory {
                 super.upgradeLevel(user);
             }
         };
+    }
+
+    @Bean
+    public DataSourceTransactionManager transactionManager() {
+        return new DataSourceTransactionManager(dataSource());
     }
 }
