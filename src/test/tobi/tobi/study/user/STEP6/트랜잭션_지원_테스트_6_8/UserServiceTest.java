@@ -9,6 +9,8 @@ import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -125,10 +127,21 @@ class UserServiceTest {
 
     @Test
     public void transactionSync() {
+        // 트랜잭션 정의는 기본 값을 사용한다.
+        DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+
+        // 트랜잭션 매니저에게 트랜잭션을 요청한다. 기존에 시작된 트랜잭션이 없으니 새로운 트랜잭션을 시작시키고 트랜잭션 정보를 돌려준다.
+        // 동시에 만들어진 트랜잭션을 다른 곳에서도 사용할 수 있도록 동기화한다.
+        TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+
+        // 앞에서 만들어진 트랜잭션에 모두 참여한다.
         userService.deleteAll();
 
         userService.add(users.get(0));
         userService.add(users.get(1));
+        //
+
+        transactionManager.commit(txStatus); // 앞에서 시작한 트랜잭션을 커밋한다.
     }
 
     static class TestUserService extends UserServiceImpl {
