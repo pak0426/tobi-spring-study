@@ -99,3 +99,82 @@ public void transactionSync() {
 ```
 
 무책임한 코드긴 하지만 어쨋든, 이렇게 테스트 코드에서 트랜잭션 매니저를 이용해 트랜잭션을 만들고 그 후에 실행되는 `UserService`의 메서드들이 같은 트랜잭션에 참여할 수 있게 만들 수 있다. 3개의 메서드 속성이 `REQUIRED`이므로 이미 시작된 트랜잭션이 있으면 참여하고 새로운 트랜잭션을 만들지 않는다.
+
+#### 트랜잭션 동기화 검증
+
+테스트를 돌려보면 별문제 없이 작업을 마칠 테니 성공이라고 나올 것이다. 하지만 정말 이 세 개의 메서드가 테스트 코드 내에서 시작된 트랜잭션에 참여하고 있는지 알 수 없다. 그래서 트랜잭션 속성을 변경해 이를 증명해보자.
+
+트랜잭션 속성 중에서 읽기전용과 제한시간 등은 처음 트랜잭션이 시작할 때만 적용되고 그 이후에 참여하는 메서드의 속성은 무시된다. 즉 `deleteAll()`의 트랜잭션 속성은 쓰기 가능으로 되어 있지만 앞에서 시작된 트랜잭션이 읽기전용이라고 하면 `deleteAll()`의 모든 작업도 읽기전용 트랜잭션이 적용된 상태에서 진행된다는 말이다.
+
+이번엔 트랜잭션 속성을 아래와 같이 읽기 전용으로 만들고 다시 테스트를 돌려보자.
+
+```java
+@Test
+public void transactionSync() {
+    DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+    TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+
+    // 트랜잭션이 활성화되었는지
+    System.out.println(TransactionSynchronizationManager.isActualTransactionActive());
+    // 격리 수준
+    System.out.println(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel());
+
+    userService.deleteAll();
+    System.out.println(TransactionSynchronizationManager.isActualTransactionActive());
+
+    userService.add(users.get(0));
+    System.out.println(TransactionSynchronizationManager.isActualTransactionActive());
+
+    userService.add(users.get(1));
+    System.out.println(TransactionSynchronizationManager.isActualTransactionActive());
+
+    transactionManager.commit(txStatus);
+}
+```
+
+이 코드를 살펴보면 트랜잭션 매니저를 통해 트랜잭션을 열고 `UserService`의 메서드들이 사용되기 전에 트랜잭션이 활성화되고 있는지 확인할 수 있다.
+  출력문을 확인하면 다음과 같다.
+
+```
+true
+null
+true
+true
+true
+```
+
+```java
+@Test
+    public void transactionSync() {
+//        DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+//        TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+
+        // 트랜잭션이 활성화되었는지
+        System.out.println(TransactionSynchronizationManager.isActualTransactionActive());
+        // 격리 수준
+        System.out.println(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel());
+
+        userService.deleteAll();
+        System.out.println(TransactionSynchronizationManager.isActualTransactionActive());
+
+        userService.add(users.get(0));
+        System.out.println(TransactionSynchronizationManager.isActualTransactionActive());
+
+        userService.add(users.get(1));
+        System.out.println(TransactionSynchronizationManager.isActualTransactionActive());
+
+//        transactionManager.commit(txStatus);
+    }
+```
+
+만약 트랜잭션 매니저 부분을 지우고 테스트를 하게 되면 결과는 다음과 같다.
+
+```
+false
+null
+false
+false
+false
+```
+
+우선 트랜잭션 매니저를 통한 트랜잭션도 실행되지 않았고 각 메서드 사이마다 트랜잭션이 유지되지 않는단느 결과를 확인할 수 있다.
