@@ -128,20 +128,11 @@ class UserServiceTest {
     }
 
     @Test
+    @Transactional(readOnly = true)
     public void transactionSync() {
-        DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
-        TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
-
-        try {
-            // 테스트 안의 모든 작업을 하나의 트랜잭션으로 통합한다.
             userService.deleteAll();
             userService.add(users.get(0));
             userService.add(users.get(1));
-        }
-        finally {
-            // 테스트 결과가 어떻든 테스트가 끝나면 무조건 롤백. 테스트 중에 발생했던 DB 변경사항은 모두 이전 상태로 복구된다.
-            transactionManager.rollback(txStatus);
-        }
     }
 
     static class MockMailSender implements MailSender {
