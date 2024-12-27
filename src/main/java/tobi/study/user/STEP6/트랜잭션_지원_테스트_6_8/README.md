@@ -311,3 +311,30 @@ false
             userService.add(users.get(1));
     }
 ```
+
+#### @TransactionConfiguration
+
+`@Transactional`은 테스트 클래스에 넣어서 모든 테스트 메서드에 일괄 적용할 수 있지만 `@Rollback`은 메서드 레벨에만 적용할 수 있다.
+
+테스트 클래스의 모든 메서드에 트랜잭션을 적용하면서 모든 트랜잭션이 롤백되지 않고 커밋되게 하려면 어떻게 해야할까? `@TransactionalConfiguration` 어노테이션을 이용하면 편리하다.
+
+`@TransactionalConfiguration`을 사용하면 롤백에 대한 공통 속성을 지정할 수 있다. 디폴트 롤백 속생은 false로 해두고, 테스트 메서드 중에서 일부만 롤백을 적용하고 싶으면 메서드에 `@Rollback`을 부여해주면 된다. 기본 값이 true이므로 이때는 트랜잭션을 롤백해준다.
+
+```java
+@SpringBootTest
+@TransactionConfiguration
+class UserServiceTest {
+    // ...
+
+    @Test
+    @Transactional
+    @Rollback
+    public void transactionSync() {
+        userService.deleteAll();
+        userService.add(users.get(0));
+        userService.add(users.get(1));
+    }
+}
+```
+
+> Spring 4.2 이후부터 Deprecated 되었다. @Rollback, @Commit을 사용하면 된다. 

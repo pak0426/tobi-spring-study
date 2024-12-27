@@ -10,10 +10,7 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.DefaultTransactionDefinition;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -130,7 +127,7 @@ class UserServiceTest {
 
     @Test
     @Transactional
-    @Rollback(false)
+    @Rollback
     public void transactionSync() {
             userService.deleteAll();
             userService.add(users.get(0));
