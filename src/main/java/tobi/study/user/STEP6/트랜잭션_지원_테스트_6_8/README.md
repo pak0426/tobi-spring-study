@@ -337,4 +337,17 @@ class UserServiceTest {
 }
 ```
 
-> Spring 4.2 이후부터 Deprecated 되었다. @Rollback, @Commit을 사용하면 된다. 
+> Spring 4.2 이후부터 Deprecated 되었다. @Rollback, @Commit을 사용하면 된다.
+
+#### NotTransactional 과 Propagation.NEVER
+
+테스트 클래스 안에서 일부 메서드에만 트랜잭션이 필요하다면 메서드 레벨의 `@Transactional`을 적용하면 된다. 반면에 대부분의 메서드에서 트랜잭션이 필요하다면 테스트 클래스에 `@Transactional`을 지정하는 것이 편리하다. 그런 경우 굳이 트랜잭션이 필요 없는 메서드는 어떻게 해야 할까? 트랜잭션이 만들어지든 말든 상관없다면 그냥 놔둬도 된다. 하지만 필요하지도 않은 트랜잭션이 만들어지는 것이 꺼림칙하거나 트랜잭션이 적용되면 안 되는 경우에는 해당 메서드에만 테스트 메서드에 의해 트랜잭션이 시작되지 않도록 만들어줄 수 있다.
+
+`@NotTransactional`을 테스트 메서드에 부여하면 클래스 레벨의 `@Transactional` 설정을 무시하고 트랜잭션을 시작하지 않은 채로 테스트를 진행한다. 물론 테스트 안에서 호출하는 메서드에서 트랜잭션을 사용하는 데는 영향을 주지 않는다. 그런데 `@NotTransactional`은 스프링 3.0에서 제거 대상이 됐기 때문에 사용하기 꺼림칙하다. 스프링의 개발자들은 트랜잭션 테스트와 비 트랜잭션 테스트를 아예 클래스를 구분해서 만들도록 권장한다. 그래도 적용하고 싶다면 사용해도 된다.
+
+`@NotTransactional` 대신 `@Transactional`의 트랜잭션 전파속성을 사용하는 방법도 있다. NEVER 전파 속성으로 지정해주면 `@NotTransactional`와 마찬가지로 트랜잭션이 시작되지 않는다.
+
+```java
+@Transactional(propagation = Propagation.NEVER)
+```
+
